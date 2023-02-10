@@ -1,10 +1,22 @@
+"""
+This script's main purpose is to create a baseline registration between an MRI and a CT scan. The input directory
+containing the dicom studies is defined by the -i flag on CLI. Before doing the registration the dicom data should be
+converted to nifty images. The -o flag defines the output of the conversion. The program will automatically create
+the directory if it does not exist. The data from the output directory will be used for the registration.
+
+File execution:
+$ python3 main.py -i dicom_input_dir -o nifty_output_dir
+"""
+
 # Import necessary files and libraries
 import sys
 import argparse
 
 
-# Main function of the script.
 def main():
+    # Print docstring of file
+    print(__doc__)
+
     # Parse CLI arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", help="input directory")
