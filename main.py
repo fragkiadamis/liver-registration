@@ -12,35 +12,101 @@ $ python3 main.py -inp dicom_input_dir -out nifty_output_dir
 import sys
 import argparse
 import os
+import subprocess
+
+# clitk tools binary path
+clitk_tools = "C:/clitk_private/_build/bin"
+
+
+# Create a respective output structure.
+def create_output_structure(input_path, output_path, dir_name):
+    dir_input_path = os.path.join(input_path, dir_name)
+    dir_output_path = os.path.join(output_path, dir_name)
+    if not os.path.isdir(dir_output_path):
+        os.mkdir(dir_output_path)
+
+    return dir_input_path, dir_output_path
+
+
+# Find and return the dicom object's type (MRI, CT, REG) based on the parent's directory name
+def find_obj_type(obj):
+    if 'REG' in str(obj):
+        return f'REG'
+    elif 'MR' in str(obj):
+        return f'MRI'
+    elif 'CT' in str(obj):
+        return f'CT'
+    elif 'RTst' in str(obj):
+        return f'RTst'
+
+
+# Rename the directories containing the dicom files. Helps to avoid possible failure because of long paths in
+# subprocess execution.
+def rename_dir(working_dir, old_dir_name, new_dir_name):
+    old_path = os.path.join(working_dir, old_dir_name)
+    new_path = os.path.join(working_dir, new_dir_name)
+    os.rename(old_path, new_path)
+
+    return new_path
+
+
+# Create a list from the dicom files and return the dicom series objects.
+def get_dicom_series(obj_input_path):
+    dcm_series = []
+
+    # Iterate in the files of the series
+    for dcm_file in os.listdir(obj_input_path):
+        dcm_file_path = os.path.join(obj_input_path, dcm_file)
+        dcm_series.append(str(dcm_file_path))
+
+    return dcm_series
+
+
+# Take the dicom series and cast it into a nifty file.
+def dicom_series_to_nifty(obj_input_path, study_output_path, modality):
+    # Get the clitkDicom2Image binary path.
+    clitkDicom2Image = [os.path.join(clitk_tools, 'clitkDicom2Image')]
+
+    # Get dicom series.
+    dcm_series = get_dicom_series(obj_input_path)
+
+    # Create command's argument list and execute.
+    argument_list = ['-o', os.path.join(study_output_path, f'Volume{modality}.nii.gz'), '-t', '10']
+    command = clitkDicom2Image + dcm_series + argument_list
+    subprocess.run(command)
 
 
 # Create nifty files from dicom files
 def dicom_2_nifty(dicom_dir, nifty_dir):
-    # Iterate through the dicom studies.
-    for patient_dir in os.listdir(dicom_dir):
-        patient_input_path = os.path.join(dicom_dir, patient_dir)
-        patient_output_path = os.path.join(nifty_dir, patient_dir)
+    # Iterate through the patients.
+    for patient in os.listdir(dicom_dir):
+        # Create the respective output path.
+        patient_input_path, patient_output_path = create_output_structure(dicom_dir, nifty_dir, patient)
 
-        # Create the output directory for each study.
-        if not os.path.isdir(patient_output_path):
-            os.mkdir(patient_output_path)
-
-        # For each modality in the study (ceMRI, SPECT-CT, PET-CT)
+        # Iterate through the patient's studies (ceMRI, SPECT-CT, PET-CT).
         for study in os.listdir(patient_input_path):
-            # Get path for object input and create the respective output path
-            study_path = os.path.join(patient_input_path, study)
-            output_study_path = os.path.join(patient_output_path, study)
-            os.mkdir(output_study_path)
+            # Create the respective output path.
+            study_input_path, study_output_path = create_output_structure(patient_input_path, patient_output_path, study)
 
-            # For each modality in the study (Image dicom series, REG file, RTStruct file)
-            for obj in os.listdir(study_path):
-                # We do not care about REG files in this process
-                if '_REG_' in obj:
+            ascend = 0
+            # Iterate through the study's objects (Image dicom series, REG file, RTStruct file).
+            for obj in os.listdir(study_input_path):
+                # Get type of object (MRI, CT, REG, RTStruct)
+                obj_type = find_obj_type(obj)
+                # Rename the objects paths to avoid any possible failures because of long paths
+                obj_input_path = rename_dir(study_input_path, obj, f'{obj_type}_{ascend}')
+                ascend += 1
+
+                # TODO extract transformation parameters from dicom reg files.
+                if obj_type == 'REG':
                     continue
 
-                # Cast to nifty the modality dicom series
-                if '_MR_' in obj or '_CT_' in obj:
-                    print(obj)
+                if obj_type == 'MRI' or obj_type == 'CT':
+                    dicom_series_to_nifty(obj_input_path, study_output_path, obj_type)
+
+                # TODO Dicom RTStructs to nifty.
+                if obj_type == '_RTst_':
+                    continue
 
 
 def main():
