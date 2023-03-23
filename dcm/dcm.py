@@ -1,7 +1,6 @@
-# Import necessary files and libraries
-import sys
-import argparse
+# Import necessary files and libraries.
 import os
+from utils import parse_arguments
 import subprocess
 import shortuuid
 
@@ -16,7 +15,7 @@ def create_output_structure(input_path, output_path, dir_name):
     return dir_input_path, dir_output_path
 
 
-# Find and return the dicom object's type (MRI, CT, REG) based on the parent's directory name
+# Find and return the dicom object's type (MRI, CT, REG) based on the parent's directory name.
 def find_obj_type(obj):
     if "REG" in str(obj):
         return "REG"
@@ -42,7 +41,7 @@ def rename_dir(working_dir, old_dir_name, new_dir_name):
 def get_files(obj_input_path):
     dcm_series = []
 
-    # Iterate in the files of the series
+    # Iterate in the files of the series.
     for dcm_file in os.listdir(obj_input_path):
         dcm_file_path = os.path.join(obj_input_path, dcm_file)
         dcm_series.append(str(dcm_file_path))
@@ -50,7 +49,7 @@ def get_files(obj_input_path):
     return dcm_series
 
 
-# Create shell command and execute it
+# Create shell command and execute it.
 def execute_shell_cmd(cmd, arguments):
     clitk_tools = os.environ.get("CLITK_TOOLS_PATH")
     clitk_command = [os.path.join(clitk_tools, cmd)]
@@ -62,13 +61,13 @@ def execute_shell_cmd(cmd, arguments):
 def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
     # Get dicom series files.
     dcm_series = get_files(obj_input_path)
-    # Volume output path + filename
+    # Volume output path + filename.
     volume_path = os.path.join(study_output_path, f"{modality}_Volume.nii.gz")
 
     # Create command and execute.
     execute_shell_cmd("clitkDicom2Image", [*dcm_series, "-o", volume_path, "-t", "10"])
 
-    # Return Volume's path to use the volume later for the RT structure conversion
+    # Return Volume's path to use the volume later for the RT structure conversion.
     return volume_path
 
 
@@ -76,14 +75,14 @@ def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
 def dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path):
     # Get dicom files (RT Structs are inside 1 file).
     dcm_rtstr = get_files(obj_input_path)[0]
-    # RT structure output path + file basename
+    # RT structure output path + file basename.
     rtstr_path = os.path.join(study_output_path, "RTStruct")
 
     # Create command and execute.
     execute_shell_cmd("clitkDicomRTStruct2Image", ["-i", dcm_rtstr, "-j", volume_path, "-o", rtstr_path,  "--niigz", "-t", "10"])
 
 
-# Create nifty files from dicom files
+# Create nifty files from dicom files.
 def extract_from_dicom(dicom_dir, nifty_dir):
     # Iterate through the patients.
     for patient in os.listdir(dicom_dir):
@@ -101,9 +100,9 @@ def extract_from_dicom(dicom_dir, nifty_dir):
             # Iterate through the study's objects (Image dicom series, REG file, RTStruct file).
             for obj in os.listdir(study_input_path):
                 print(f"\t\t-Object: {obj}")
-                # Get type of object (MRI, CT, REG, RTStruct)
+                # Get type of object (MRI, CT, REG, RTStruct).
                 obj_type = find_obj_type(obj)
-                # Rename the objects paths to avoid any possible failures because of long paths
+                # Rename the objects paths to avoid any possible failures because of long paths.
                 obj_input_path = rename_dir(study_input_path, obj, obj_type)
 
                 # TODO extract transformation parameters from dicom reg files.
@@ -120,21 +119,8 @@ def extract_from_dicom(dicom_dir, nifty_dir):
 
 
 def main():
-    # Parse CLI arguments.
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-inp", help="input directory")
-    parser.add_argument("-out", help="output directory")
-
-    # Upack input and output directories.
-    dicom_dir, nifty_dir = vars(parser.parse_args()).values()
-
-    # Validate that arguments are not None.
-    if (not dicom_dir) or (not nifty_dir):
-        sys.exit("Specify input -inp and output -out.")
-
-    # If nifty output directory does not exist, create it
-    if not os.path.isdir(nifty_dir):
-        os.mkdir(nifty_dir)
+    # Parse CLI arguments and handle inputs and outputs.
+    dicom_dir, nifty_dir = parse_arguments()
 
     # Convert dicom data to nifty and extract the manual transformations.
     extract_from_dicom(dicom_dir, nifty_dir)
