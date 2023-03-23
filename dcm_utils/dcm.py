@@ -2,6 +2,7 @@
 import os
 from utils import parse_arguments
 import subprocess
+from dotenv import load_dotenv
 import shortuuid
 
 
@@ -28,7 +29,9 @@ def find_obj_type(obj):
 
 
 # Rename the directories containing the dicom files. Helps to avoid possible failure because of long paths in
-# subprocess execution. Add uuid to avoid duplicate directory names.
+# subprocess execution. Add uuid to avoid duplicate directory names. *** THIS IS A TEMP SOLUTION ***
+# TODO: Check sometime in the future if it is possible to handle large strings in the subprocess and completely
+#  delete the renaming process from the project.
 def rename_dir(working_dir, old_dir_name, new_dir_name):
     old_path = os.path.join(working_dir, old_dir_name)
     new_path = os.path.join(working_dir, f"{new_dir_name}_{shortuuid.uuid()}")
@@ -51,8 +54,7 @@ def get_files(obj_input_path):
 
 # Create shell command and execute it.
 def execute_shell_cmd(cmd, arguments):
-    clitk_tools = os.environ.get("CLITK_TOOLS_PATH")
-    clitk_command = [os.path.join(clitk_tools, cmd)]
+    clitk_command = [os.path.join(os.environ.get("CLITK_TOOLS_PATH"), cmd)]
     command = clitk_command + arguments
     subprocess.run(command)
 
@@ -119,6 +121,9 @@ def extract_from_dicom(dicom_dir, nifty_dir):
 
 
 def main():
+    # Load environmental variables from .env file (create a .env file according to .env.example).
+    load_dotenv()
+
     # Parse CLI arguments and handle inputs and outputs.
     dicom_dir, nifty_dir = parse_arguments()
 
