@@ -14,9 +14,10 @@ import argparse
 import os
 import subprocess
 import shortuuid
+from dotenv import load_dotenv
 
-# clitk tools binary path
-clitk_tools = "C:/clitk_private/_build/bin"
+# Load environmental variables from .env file (create a .env file according to .env.example)
+load_dotenv()
 
 
 # Create a respective output structure.
@@ -31,21 +32,21 @@ def create_output_structure(input_path, output_path, dir_name):
 
 # Find and return the dicom object's type (MRI, CT, REG) based on the parent's directory name
 def find_obj_type(obj):
-    if 'REG' in str(obj):
-        return f'REG'
-    elif 'MR' in str(obj):
-        return f'MRI'
-    elif 'CT' in str(obj):
-        return f'CT'
-    elif 'RTst' in str(obj):
-        return f'RTst'
+    if "REG" in str(obj):
+        return "REG"
+    elif "MR" in str(obj):
+        return "MRI"
+    elif "CT" in str(obj):
+        return "CT"
+    elif "RTst" in str(obj):
+        return "RTst"
 
 
 # Rename the directories containing the dicom files. Helps to avoid possible failure because of long paths in
 # subprocess execution. Add uuid to avoid duplicate directory names.
 def rename_dir(working_dir, old_dir_name, new_dir_name):
     old_path = os.path.join(working_dir, old_dir_name)
-    new_path = os.path.join(working_dir, f'{new_dir_name}_{shortuuid.uuid()}')
+    new_path = os.path.join(working_dir, f"{new_dir_name}_{shortuuid.uuid()}")
     os.rename(old_path, new_path)
 
     return new_path
@@ -65,6 +66,7 @@ def get_dicom_series(obj_input_path):
 
 # Create shell command and execute it
 def execute_shell_cmd(cmd, arguments):
+    clitk_tools = os.environ.get("CLITK_TOOLS_PATH")
     clitk_command = [os.path.join(clitk_tools, cmd)]
     command = clitk_command + arguments
     subprocess.run(command)
@@ -75,10 +77,10 @@ def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
     # Get dicom series files.
     dcm_series = get_dicom_series(obj_input_path)
     # Volume output path + filename
-    volume_path = os.path.join(study_output_path, f'{modality}_Volume.nii.gz')
+    volume_path = os.path.join(study_output_path, f"{modality}_Volume.nii.gz")
 
     # Create command and execute.
-    execute_shell_cmd('clitkDicom2Image', [*dcm_series, '-o', volume_path, '-t', '10'])
+    execute_shell_cmd("clitkDicom2Image", [*dcm_series, "-o", volume_path, "-t", "10"])
 
     # Return Volume's path to use the volume later for the RT structure conversion
     return volume_path
@@ -89,43 +91,43 @@ def dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path):
     # Get dicom files.
     dcm_rtstr = get_dicom_series(obj_input_path)[0]
     # RT structure output path + file basename
-    rtstr_path = os.path.join(study_output_path, 'RTStruct')
+    rtstr_path = os.path.join(study_output_path, "RTStruct")
 
     # Create command and execute.
-    execute_shell_cmd('clitkDicomRTStruct2Image', ['-i', dcm_rtstr, '-j', volume_path, '-o', rtstr_path,  '--niigz', '-t', '10'])
+    execute_shell_cmd("clitkDicomRTStruct2Image", ["-i", dcm_rtstr, "-j", volume_path, "-o", rtstr_path,  "--niigz", "-t", "10"])
 
 
 # Create nifty files from dicom files
 def extract_from_dicom(dicom_dir, nifty_dir):
     # Iterate through the patients.
     for patient in os.listdir(dicom_dir):
-        print(f'\n-Extracting from patient: {patient}')
+        print(f"\n-Extracting from patient: {patient}")
         # Create the respective output path.
         patient_input_path, patient_output_path = create_output_structure(dicom_dir, nifty_dir, patient)
 
         # Iterate through the patient's studies (ceMRI, SPECT-CT, PET-CT).
         for study in os.listdir(patient_input_path):
-            print(f'\t-Study: {study}')
+            print(f"\t-Study: {study}")
             # Create the respective output path.
             study_input_path, study_output_path = create_output_structure(patient_input_path, patient_output_path, study)
 
-            volume_path = ''
+            volume_path = ""
             # Iterate through the study's objects (Image dicom series, REG file, RTStruct file).
             for obj in os.listdir(study_input_path):
-                print(f'\t\t-Object: {obj}')
+                print(f"\t\t-Object: {obj}")
                 # Get type of object (MRI, CT, REG, RTStruct)
                 obj_type = find_obj_type(obj)
                 # Rename the objects paths to avoid any possible failures because of long paths
                 obj_input_path = rename_dir(study_input_path, obj, obj_type)
 
                 # TODO extract transformation parameters from dicom reg files.
-                if obj_type == 'REG':
+                if obj_type == "REG":
                     continue
 
-                if obj_type == 'MRI' or obj_type == 'CT':
+                if obj_type == "MRI" or obj_type == "CT":
                     volume_path = dicom_series_2_nifty(obj_input_path, study_output_path, obj_type)
 
-                if obj_type == 'RTst':
+                if obj_type == "RTst":
                     dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path)
 
 
@@ -147,8 +149,8 @@ def main():
         os.mkdir(nifty_dir)
 
     # Convert dicom data to nifty and extract the manual transformations.
-    extract_from_dicom(dicom_dir, nifty_dir)
-    print('Extraction done.')
+    # extract_from_dicom(dicom_dir, nifty_dir)
+    print("Extraction done.")
 
 
 # Use this file as a script and run it.
