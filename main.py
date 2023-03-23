@@ -63,35 +63,56 @@ def get_dicom_series(obj_input_path):
     return dcm_series
 
 
-# Take the dicom series and cast it into a nifty file.
-def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
-    # Get the clitkDicom2Image binary path.
-    clitkDicom2Image = [os.path.join(clitk_tools, 'clitkDicom2Image')]
-
-    # Get dicom series.
-    dcm_series = get_dicom_series(obj_input_path)
-
-    # Create command's argument list and execute.
-    argument_list = ['-o', os.path.join(study_output_path, f'Volume{modality}.nii.gz'), '-t', '10']
-    command = clitkDicom2Image + dcm_series + argument_list
+# Create shell command and execute it
+def execute_shell_cmd(cmd, arguments):
+    clitk_command = [os.path.join(clitk_tools, cmd)]
+    command = clitk_command + arguments
     subprocess.run(command)
+
+
+# Take the dicom series and convert it to nifty.
+def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
+    # Get dicom series files.
+    dcm_series = get_dicom_series(obj_input_path)
+    # Volume output path + filename
+    volume_path = os.path.join(study_output_path, f'{modality}_Volume.nii.gz')
+
+    # Create command and execute.
+    execute_shell_cmd('clitkDicom2Image', [*dcm_series, '-o', volume_path, '-t', '10'])
+
+    # Return Volume's path to use the volume later for the RT structure conversion
+    return volume_path
+
+
+# Take the dicom RT Structures and convert them to nifty.
+def dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path):
+    # Get dicom files.
+    dcm_rtstr = get_dicom_series(obj_input_path)[0]
+    # RT structure output path + file basename
+    rtstr_path = os.path.join(study_output_path, 'RTStruct')
+
+    # Create command and execute.
+    execute_shell_cmd('clitkDicomRTStruct2Image', ['-i', dcm_rtstr, '-j', volume_path, '-o', rtstr_path,  '--niigz', '-t', '10'])
 
 
 # Create nifty files from dicom files
 def extract_from_dicom(dicom_dir, nifty_dir):
     # Iterate through the patients.
     for patient in os.listdir(dicom_dir):
+        print(f'\n-Extracting from patient: {patient}')
         # Create the respective output path.
         patient_input_path, patient_output_path = create_output_structure(dicom_dir, nifty_dir, patient)
 
         # Iterate through the patient's studies (ceMRI, SPECT-CT, PET-CT).
         for study in os.listdir(patient_input_path):
+            print(f'\t-Study: {study}')
             # Create the respective output path.
             study_input_path, study_output_path = create_output_structure(patient_input_path, patient_output_path, study)
 
-            ascend = 0
+            volume_path = ''
             # Iterate through the study's objects (Image dicom series, REG file, RTStruct file).
             for obj in os.listdir(study_input_path):
+                print(f'\t\t-Object: {obj}')
                 # Get type of object (MRI, CT, REG, RTStruct)
                 obj_type = find_obj_type(obj)
                 # Rename the objects paths to avoid any possible failures because of long paths
@@ -102,11 +123,10 @@ def extract_from_dicom(dicom_dir, nifty_dir):
                     continue
 
                 if obj_type == 'MRI' or obj_type == 'CT':
-                    dicom_series_2_nifty(obj_input_path, study_output_path, obj_type)
+                    volume_path = dicom_series_2_nifty(obj_input_path, study_output_path, obj_type)
 
-                # TODO Dicom RTStructs to nifty.
-                if obj_type == '_RTst_':
-                    continue
+                if obj_type == 'RTst':
+                    dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path)
 
 
 def main():
@@ -126,9 +146,9 @@ def main():
     if not os.path.isdir(nifty_dir):
         os.mkdir(nifty_dir)
 
-    # Create nifty files from dicom files
-    print('Converting dicom to nifty. This process can take several minutes...')
+    # Convert dicom data to nifty and extract the manual transformations.
     extract_from_dicom(dicom_dir, nifty_dir)
+    print('Extraction done.')
 
 
 # Use this file as a script and run it.
