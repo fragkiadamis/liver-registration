@@ -1,13 +1,3 @@
-"""
-This script's main purpose is to create a baseline registration between an MRI and a CT scan. The input directory
-containing the dicom studies is defined by the -inp flag on CLI. Before doing the registration the dicom data should be
-converted to nifty images. The -out flag defines the output of the conversion. The program will automatically create
-the directory if it does not exist. The data from the output directory will be used for the registration.
-
-File execution:
-$ python3 main.py -inp dicom_input_dir -out nifty_output_dir
-"""
-
 # Import necessary files and libraries
 import sys
 import argparse
@@ -52,8 +42,8 @@ def rename_dir(working_dir, old_dir_name, new_dir_name):
     return new_path
 
 
-# Create a list from the dicom files and return the dicom series objects.
-def get_dicom_series(obj_input_path):
+# Create a list from the files and return the dicom series objects.
+def get_files(obj_input_path):
     dcm_series = []
 
     # Iterate in the files of the series
@@ -75,7 +65,7 @@ def execute_shell_cmd(cmd, arguments):
 # Take the dicom series and convert it to nifty.
 def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
     # Get dicom series files.
-    dcm_series = get_dicom_series(obj_input_path)
+    dcm_series = get_files(obj_input_path)
     # Volume output path + filename
     volume_path = os.path.join(study_output_path, f"{modality}_Volume.nii.gz")
 
@@ -88,8 +78,8 @@ def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
 
 # Take the dicom RT Structures and convert them to nifty.
 def dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path):
-    # Get dicom files.
-    dcm_rtstr = get_dicom_series(obj_input_path)[0]
+    # Get dicom files (RT Structs are inside 1 file).
+    dcm_rtstr = get_files(obj_input_path)[0]
     # RT structure output path + file basename
     rtstr_path = os.path.join(study_output_path, "RTStruct")
 
@@ -130,6 +120,8 @@ def extract_from_dicom(dicom_dir, nifty_dir):
                 if obj_type == "RTst":
                     dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path)
 
+    print("Extraction done.")
+
 
 def main():
     # Parse CLI arguments.
@@ -149,7 +141,7 @@ def main():
         os.mkdir(nifty_dir)
 
     # Convert dicom data to nifty and extract the manual transformations.
-    # extract_from_dicom(dicom_dir, nifty_dir)
+    extract_from_dicom(dicom_dir, nifty_dir)
     print("Extraction done.")
 
 
