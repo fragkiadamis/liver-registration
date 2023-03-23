@@ -1,5 +1,9 @@
 import os
 from dcm import extract_from_dicom
+from dotenv import load_dotenv
+
+# Load environmental variables from .env file (create a .env file according to .env.example)
+load_dotenv()
 
 
 def main():

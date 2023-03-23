@@ -4,10 +4,6 @@ import argparse
 import os
 import subprocess
 import shortuuid
-from dotenv import load_dotenv
-
-# Load environmental variables from .env file (create a .env file according to .env.example)
-load_dotenv()
 
 
 # Create a respective output structure.
