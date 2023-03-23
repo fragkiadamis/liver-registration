@@ -1,9 +1,8 @@
 # Import necessary files and libraries.
 import os
-from utils import parse_arguments
-import subprocess
 from dotenv import load_dotenv
 import shortuuid
+from utils import validate_paths, execute_shell_cmd
 
 
 # Create a respective output structure.
@@ -50,13 +49,6 @@ def get_files(obj_input_path):
         dcm_series.append(str(dcm_file_path))
 
     return dcm_series
-
-
-# Create shell command and execute it.
-def execute_shell_cmd(cmd, arguments):
-    clitk_command = [os.path.join(os.environ.get("CLITK_TOOLS_PATH"), cmd)]
-    command = clitk_command + arguments
-    subprocess.run(command)
 
 
 # Take the dicom series and convert it to nifty.
@@ -124,8 +116,9 @@ def main():
     # Load environmental variables from .env file (create a .env file according to .env.example).
     load_dotenv()
 
-    # Parse CLI arguments and handle inputs and outputs.
-    dicom_dir, nifty_dir = parse_arguments()
+    dicom_dir = os.environ["DICOM_PATH"]
+    nifty_dir = os.environ["NIFTY_PATH"]
+    validate_paths(dicom_dir, nifty_dir)
 
     # Convert dicom data to nifty and extract the manual transformations.
     extract_from_dicom(dicom_dir, nifty_dir)

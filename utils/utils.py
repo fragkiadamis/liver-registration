@@ -1,6 +1,7 @@
 import argparse
 import sys
 import os
+from subprocess import run, check_output
 
 
 # Validate paths, create output paths if they do not exist
@@ -18,14 +19,8 @@ def validate_paths(input_dir, output_dir):
         os.mkdir(output_dir)
 
 
-# Parse the input and the output arguments from the cli and handle any errors.
-def parse_arguments():
-    # Parse CLI arguments.
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-inp", help="input directory")
-    parser.add_argument("-out", help="output directory")
-
-    input_dir, output_dir = vars(parser.parse_args()).values()
-
-    # Return input and output directories.
-    return input_dir, output_dir
+# Create shell command and execute it.
+def execute_shell_cmd(cmd, arguments):
+    clitk_command = [os.path.join(os.environ["CLITK_TOOLS_PATH"], cmd)]
+    command = clitk_command + arguments
+    return check_output(command)

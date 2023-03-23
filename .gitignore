@@ -9,8 +9,7 @@ venv/
 ENV/
 
 # local data
-dataset/dicom
-dataset/nifty
+data
 
 # Installer logs
 pip-log.txt
