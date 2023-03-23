@@ -13,6 +13,7 @@ import sys
 import argparse
 import os
 import subprocess
+import shortuuid
 
 # clitk tools binary path
 clitk_tools = "C:/clitk_private/_build/bin"
@@ -41,10 +42,10 @@ def find_obj_type(obj):
 
 
 # Rename the directories containing the dicom files. Helps to avoid possible failure because of long paths in
-# subprocess execution.
+# subprocess execution. Add uuid to avoid duplicate directory names.
 def rename_dir(working_dir, old_dir_name, new_dir_name):
     old_path = os.path.join(working_dir, old_dir_name)
-    new_path = os.path.join(working_dir, new_dir_name)
+    new_path = os.path.join(working_dir, f'{new_dir_name}_{shortuuid.uuid()}')
     os.rename(old_path, new_path)
 
     return new_path
@@ -63,7 +64,7 @@ def get_dicom_series(obj_input_path):
 
 
 # Take the dicom series and cast it into a nifty file.
-def dicom_series_to_nifty(obj_input_path, study_output_path, modality):
+def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
     # Get the clitkDicom2Image binary path.
     clitkDicom2Image = [os.path.join(clitk_tools, 'clitkDicom2Image')]
 
@@ -77,7 +78,7 @@ def dicom_series_to_nifty(obj_input_path, study_output_path, modality):
 
 
 # Create nifty files from dicom files
-def dicom_2_nifty(dicom_dir, nifty_dir):
+def extract_from_dicom(dicom_dir, nifty_dir):
     # Iterate through the patients.
     for patient in os.listdir(dicom_dir):
         # Create the respective output path.
@@ -94,15 +95,14 @@ def dicom_2_nifty(dicom_dir, nifty_dir):
                 # Get type of object (MRI, CT, REG, RTStruct)
                 obj_type = find_obj_type(obj)
                 # Rename the objects paths to avoid any possible failures because of long paths
-                obj_input_path = rename_dir(study_input_path, obj, f'{obj_type}_{ascend}')
-                ascend += 1
+                obj_input_path = rename_dir(study_input_path, obj, obj_type)
 
                 # TODO extract transformation parameters from dicom reg files.
                 if obj_type == 'REG':
                     continue
 
                 if obj_type == 'MRI' or obj_type == 'CT':
-                    dicom_series_to_nifty(obj_input_path, study_output_path, obj_type)
+                    dicom_series_2_nifty(obj_input_path, study_output_path, obj_type)
 
                 # TODO Dicom RTStructs to nifty.
                 if obj_type == '_RTst_':
@@ -127,7 +127,8 @@ def main():
         os.mkdir(nifty_dir)
 
     # Create nifty files from dicom files
-    dicom_2_nifty(dicom_dir, nifty_dir)
+    print('Converting dicom to nifty. This process can take several minutes...')
+    extract_from_dicom(dicom_dir, nifty_dir)
 
 
 # Use this file as a script and run it.
