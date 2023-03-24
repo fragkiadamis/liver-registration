@@ -2,17 +2,13 @@
 import os
 from dotenv import load_dotenv
 import shortuuid
-from utils import validate_paths, execute_shell_cmd
-
-
-# Create a respective output structure.
-def create_output_structure(input_path, output_path, dir_name):
-    dir_input_path = os.path.join(input_path, dir_name)
-    dir_output_path = os.path.join(output_path, dir_name)
-    if not os.path.isdir(dir_output_path):
-        os.mkdir(dir_output_path)
-
-    return dir_input_path, dir_output_path
+from utils import \
+    validate_paths, \
+    create_output_structure, \
+    rename_instance, \
+    get_files, \
+    fix_filenames, \
+    execute_shell_cmd
 
 
 # Find and return the dicom object's type (MRI, CT, REG) based on the parent's directory name.
@@ -25,30 +21,6 @@ def find_obj_type(obj):
         return "CT"
     elif "RTst" in str(obj):
         return "RTst"
-
-
-# Rename the directories containing the dicom files. Helps to avoid possible failure because of long paths in
-# subprocess execution. Add uuid to avoid duplicate directory names. *** THIS IS A TEMP SOLUTION ***
-# TODO: Check sometime in the future if it is possible to handle large strings in the subprocess and completely
-#  delete the renaming process from the project.
-def rename_dir(working_dir, old_dir_name, new_dir_name):
-    old_path = os.path.join(working_dir, old_dir_name)
-    new_path = os.path.join(working_dir, f"{new_dir_name}_{shortuuid.uuid()}")
-    os.rename(old_path, new_path)
-
-    return new_path
-
-
-# Create a list from the files and return the dicom series objects.
-def get_files(obj_input_path):
-    dcm_series = []
-
-    # Iterate in the files of the series.
-    for dcm_file in os.listdir(obj_input_path):
-        dcm_file_path = os.path.join(obj_input_path, dcm_file)
-        dcm_series.append(str(dcm_file_path))
-
-    return dcm_series
 
 
 # Take the dicom series and convert it to nifty.
@@ -78,6 +50,8 @@ def dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path):
 
 # Create nifty files from dicom files.
 def extract_from_dicom(dicom_dir, nifty_dir):
+    patients = []
+
     # Iterate through the patients.
     for patient in os.listdir(dicom_dir):
         print(f"\n-Extracting from patient: {patient}")
@@ -97,7 +71,9 @@ def extract_from_dicom(dicom_dir, nifty_dir):
                 # Get type of object (MRI, CT, REG, RTStruct).
                 obj_type = find_obj_type(obj)
                 # Rename the objects paths to avoid any possible failures because of long paths.
-                obj_input_path = rename_dir(study_input_path, obj, obj_type)
+                # TODO: Check sometime in the future if it is possible to handle large strings in the subprocess and
+                #  completely delete the renaming process from the project.
+                obj_input_path = rename_instance(study_input_path, obj, f"{obj_type}_{shortuuid.uuid()}")
 
                 # TODO extract transformation parameters from dicom reg files.
                 if obj_type == "REG":
@@ -109,7 +85,34 @@ def extract_from_dicom(dicom_dir, nifty_dir):
                 if obj_type == "RTst":
                     dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path)
 
+                # Fix any inconsistencies in the filenames
+                fix_filenames(study_output_path)
+
+        patients.append(patient)
+
     print("Extraction done.")
+    return patients
+
+
+# Resample MRI instance to the CT instance's physical space.
+def resample_mri_2_ct(ct_mri_pairs):
+    for pair in ct_mri_pairs:
+        print(f"{pair} pair resampling...")
+        ct_instance = ct_mri_pairs[pair][0]
+        mri_instance = ct_mri_pairs[pair][1]
+
+        split_path = mri_instance.split(".")
+        resampled_mri_struct = f"{split_path[0]}_resampled_to_ct.{split_path[1]}.{split_path[2]}"
+        execute_shell_cmd("clitkAffineTransform", ["-i", mri_instance, "-o", resampled_mri_struct, "-l", ct_instance])
+
+        ct_mri_pairs[pair][1] = resampled_mri_struct
+
+    print("Resampling Done.")
+    return ct_mri_pairs
+
+
+# TODO: Add the function from Felix' preprocessing file (the one in the USB key) that locates identical or very
+#  similar patients.
 
 
 def main():

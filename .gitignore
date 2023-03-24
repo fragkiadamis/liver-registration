@@ -10,6 +10,7 @@ ENV/
 
 # local data
 data
+output.xlsx
 
 # Installer logs
 pip-log.txt
