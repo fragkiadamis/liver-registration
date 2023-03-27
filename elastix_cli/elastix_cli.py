@@ -1,6 +1,7 @@
 import os
+from subprocess import check_output, CalledProcessError
 from dotenv import load_dotenv
-from utils import validate_paths, find_ct_mri_pairs, execute_shell_cmd, calculate_dice
+from utils import validate_paths, find_ct_mri_pairs, calculate_dice
 
 
 # Open file and edit the bspline interpolation order.
@@ -29,11 +30,10 @@ def apply_transform(transformation_file, patient_pair, transformation_dir):
     # Change the bspline interpolation order from 3 to 0 to apply the transformation to the binary mask. Then
     # apply the transformation on the mask and reset the interpolation order to the initial value.
     change_interpolation_order(transformation_file, ["3", "0"])
-    trx_arguments = ["-in", patient_pair[3], "-out", transformation_dir, "-tp", transformation_file]
-    execute_shell_cmd("transformix", os.environ["ELX_BIN_PATH"], trx_arguments)
+    check_output(["transformix", "-in", patient_pair[3], "-out", transformation_dir, "-tp", transformation_file])
     change_interpolation_order(transformation_file, ["0", "3"])
 
-    # Return the reampled mask path
+    # Return the resampled mask path.
     return os.path.join(transformation_dir, "result.nii.gz")
 
 
@@ -43,7 +43,7 @@ def elx_cli_register(ct_mri_pairs, parameters_path, output_path):
     # Define here the transformations.
     transformations = ["rigid", "bspline"]
     transformation_file = ""
-    resampled_pairs = {}
+    transformed_pairs = {}
 
     counter = 0
     for patient in ct_mri_pairs:
@@ -73,24 +73,24 @@ def elx_cli_register(ct_mri_pairs, parameters_path, output_path):
 
             try:
                 # Perform registration and replace the transformation file with the new one.
-                # print(f"{patient} CT-MRI pair {transformation} registration...")
-                # execute_shell_cmd("elastix", os.environ["ELX_BIN_PATH"], elx_arguments)
+                print(f"{patient} CT-MRI pair {transformation} registration...")
+                check_output(["elastix", *elx_arguments])
                 # print(f"Applying transformation to mask...")
                 transformation_file = os.path.join(transformation_dir, "TransformParameters.0.txt")
-                resampled_mask_path = apply_transform(transformation_file, ct_mri_pairs[patient], transformation_dir)
-                resampled_pairs[patient] = [
+                transformed_mask = apply_transform(transformation_file, ct_mri_pairs[patient], transformation_dir)
+                transformed_pairs[patient] = [
                     ct_mri_pairs[patient][0],
                     ct_mri_pairs[patient][1],
                     ct_mri_pairs[patient][2],
-                    resampled_mask_path
+                    transformed_mask
                 ]
 
                 # Calculate the dice index after each step.
-                # calculate_dice(resampled_pairs)
-            except NameError:
-                print(f"Transformation {transformation} failed for {patient}: {NameError}")
+                # calculate_dice(transformed_pairs)
+            except CalledProcessError as e:
+                print(f"Registration {transformation} failed for {patient}: {e}")
 
-    return resampled_pairs
+    return transformed_pairs
 
 
 def main():

@@ -22,7 +22,7 @@ def main():
     df = open_data_frame("output.xlsx")
 
     # Extract images in nifty format from dicom files, as well as the manual transformations parameters.
-    # df["Patient"] = extract_from_dicom(dicom_dir, nifty_dir)
+    df["Patient"] = extract_from_dicom(dicom_dir, nifty_dir)
 
     # Calculate initial dice index on the nifty structs.
     # ct_mri_pairs = find_ct_mri_pairs(nifty_dir, studies=["SPECT-CT", "ceMRI"])
@@ -31,10 +31,10 @@ def main():
     # df = update_dataframe(df, initial_dice, "Initial Dice Index")
 
     # Register images, apply transformation to mask and recalculate dice index.
-    ct_mri_pairs = find_ct_mri_pairs(nifty_dir, studies=["SPECT-CT", "ceMRI"])
-    ct_mri_pairs = elx_cli_register(ct_mri_pairs, parameters_path, elx_cli_output)
-    new_dice = calculate_dice(ct_mri_pairs)
-    df = update_dataframe(df, new_dice, "Dice Index")
+    # ct_mri_pairs = find_ct_mri_pairs(nifty_dir, studies=["SPECT-CT", "ceMRI"])
+    # ct_mri_pairs = elx_cli_register(ct_mri_pairs, parameters_path, elx_cli_output)
+    # new_dice = calculate_dice(ct_mri_pairs)
+    # df = update_dataframe(df, new_dice, "Dice Index")
 
 
 # Use this file as a script and run it.

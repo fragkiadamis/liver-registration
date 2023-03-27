@@ -19,21 +19,13 @@ def validate_paths(input_dir, output_dir):
         os.mkdir(output_dir)
 
 
-# TODO: Create a function that creates the dicom input structure and copies the files from the inconsistent dataset
-#  structure
-def create_structure():
-    """"""
-
-
-# TODO: The nifty output structure should be a copy of the the dicom input structure (maybe with a layer less deep).
-# Create the output structure.
-def create_output_structure(input_path, output_path, dir_name):
-    dir_input_path = os.path.join(input_path, dir_name)
+# Create a directory.
+def create_dir(output_path, dir_name):
     dir_output_path = os.path.join(output_path, dir_name)
     if not os.path.exists(dir_output_path):
         os.mkdir(dir_output_path)
 
-    return dir_input_path, dir_output_path
+    return dir_output_path
 
 
 # Rename a directory
@@ -49,25 +41,29 @@ def rename_instance(working_dir, old_name, new_name):
 def get_files(path):
     files = []
     # Iterate in the files of the series.
-    for file in os.listdir(path):
-        file_path = os.path.join(path, file)
+    for file_name in os.listdir(path):
+        file_path = os.path.join(path, file_name)
         files.append(str(file_path))
 
     return files
 
 
 # Lower filenames and fix any inconsistency (e.g. foie -> liver).
-def fix_filenames(path):
-    for filename in os.listdir(path):
+def fix_filenames(parent_dir):
+    for filename in os.listdir(parent_dir):
         new_filename = filename.lower()
+
+        # If already exists, leave it as it is...
+        if os.path.exists(os.path.join(parent_dir, new_filename)):
+            return
 
         # Make the RT structures filename consistent.
         if "foie" in new_filename or "liver" in new_filename:
-            new_filename = "rtstruct_liver.nii.gz"
+            new_filename = "rtstruct_liver"
         elif "tumeur" in new_filename or "tumor" in new_filename:
-            new_filename = "rtstruct_tumor.nii.gz"
+            new_filename = "rtstruct_tumor"
 
-        rename_instance(path, filename, new_filename)
+        rename_instance(parent_dir, filename, new_filename)
 
 
 # Create a dataframe and load the xl file if it exists.
@@ -89,6 +85,7 @@ def update_dataframe(df, data, column_name):
     return df
 
 
+# TODO: Set this function to return either the masks only or the images only or both masks and images
 # Traverse through the data and find the defined studies (ceMRI, SPECT-CT, PET-CT) pair according to filename
 def find_ct_mri_pairs(root_dir, studies):
     pairs = {}
@@ -114,18 +111,10 @@ def calculate_dice(rt_structs):
     for patient in rt_structs:
         ct_struct = rt_structs[patient][1]
         mri_struct = rt_structs[patient][3]
-        dice_index = execute_shell_cmd("clitkDice", os.environ["CLITK_TOOLS_PATH"], ["-i", ct_struct, "-j", mri_struct])
+        dice_index = check_output(["clitkDice", "-i", ct_struct, "-j", mri_struct])
         dice_index = float(dice_index.decode("utf-8"))
 
         print(f"{patient} Dice Index: {dice_index}")
         dice_results[f"{patient}"] = dice_index
 
     return dice_results
-
-
-# Create shell command and execute it.
-def execute_shell_cmd(binary, binary_path, arguments):
-    binary = [os.path.join(binary_path, binary)]
-    command = binary + arguments
-
-    return check_output(command)
