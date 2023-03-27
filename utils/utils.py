@@ -1,7 +1,7 @@
 import sys
 import os
-from fnmatch import fnmatch
 from subprocess import check_output
+import pandas as pd
 
 
 # Validate paths, create output paths if they do not exist
@@ -11,11 +11,11 @@ def validate_paths(input_dir, output_dir):
         sys.exit("Specify input -inp and output -out.")
 
     # Validate that input directory exists.
-    if not os.path.isdir(input_dir):
+    if not os.path.exists(input_dir):
         sys.exit("This input directory does not exist.")
 
     # Create output if it does not exist.
-    if not os.path.isdir(output_dir):
+    if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
 
@@ -30,7 +30,7 @@ def create_structure():
 def create_output_structure(input_path, output_path, dir_name):
     dir_input_path = os.path.join(input_path, dir_name)
     dir_output_path = os.path.join(output_path, dir_name)
-    if not os.path.isdir(dir_output_path):
+    if not os.path.exists(dir_output_path):
         os.mkdir(dir_output_path)
 
     return dir_input_path, dir_output_path
@@ -70,33 +70,62 @@ def fix_filenames(path):
         rename_instance(path, filename, new_filename)
 
 
+# Create a dataframe and load the xl file if it exists.
+def open_data_frame(file):
+    df = pd.DataFrame()
+    # Open the file with all the data (if it exists).
+    if "output.xlsx" in os.listdir("./"):
+        df = pd.read_excel("output.xlsx", index_col=0)
+
+    return df
+
+
+# Add a new column to the dataframe.
+def update_dataframe(df, data, column_name):
+    for item in data:
+        df.loc[df["Patient"] == item, column_name] = data[item]
+    # Save the data
+    df.to_excel("output.xlsx")
+    return df
+
+
 # Traverse through the data and find the defined studies (ceMRI, SPECT-CT, PET-CT) pair according to filename
-def find_ct_mri_pair(root_dir, studies, filename):
+def find_ct_mri_pairs(root_dir, studies):
     pairs = {}
 
     for patient in os.listdir(root_dir):
         study_one_dir = os.path.join(root_dir, patient, studies[0])
         study_two_dir = os.path.join(root_dir, patient, studies[1])
 
-        # Find and get the liver structure for the MRI and the CT
-        instance_one, instance_two, match = "", "", ""
-
-        for nii_file in os.listdir(study_one_dir):
-            if fnmatch(nii_file, f"*{filename}.nii.gz"):
-                instance_one = os.path.join(study_one_dir, nii_file)
-
-        for nii_file in os.listdir(study_two_dir):
-            if fnmatch(nii_file, f"*{filename}.nii.gz"):
-                instance_two = os.path.join(study_two_dir, nii_file)
-
-        pairs[patient] = [instance_one, instance_two]
+        pairs[patient] = [
+            os.path.join(study_one_dir, "ct_volume.nii.gz"),
+            os.path.join(study_one_dir, "rtstruct_liver.nii.gz"),
+            os.path.join(study_two_dir, "mri_volume.nii.gz"),
+            os.path.join(study_two_dir, "rtstruct_liver.nii.gz"),
+        ]
 
     return pairs
 
 
+# Calculate the dice index between 2 RT structures
+def calculate_dice(rt_structs):
+    dice_results = {}
+
+    for patient in rt_structs:
+        ct_struct = rt_structs[patient][1]
+        mri_struct = rt_structs[patient][3]
+        dice_index = execute_shell_cmd("clitkDice", os.environ["CLITK_TOOLS_PATH"], ["-i", ct_struct, "-j", mri_struct])
+        dice_index = float(dice_index.decode("utf-8"))
+
+        print(f"{patient} Dice Index: {dice_index}")
+        dice_results[f"{patient}"] = dice_index
+
+    return dice_results
+
+
 # Create shell command and execute it.
-def execute_shell_cmd(cmd, arguments):
-    clitk_command = [os.path.join(os.environ["CLITK_TOOLS_PATH"], cmd)]
-    command = clitk_command + arguments
+def execute_shell_cmd(binary, binary_path, arguments):
+    binary = [os.path.join(binary_path, binary)]
+    command = binary + arguments
 
     return check_output(command)

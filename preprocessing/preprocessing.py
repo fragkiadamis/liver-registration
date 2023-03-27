@@ -31,7 +31,7 @@ def dicom_series_2_nifty(obj_input_path, study_output_path, modality):
     volume_path = os.path.join(study_output_path, f"{modality}_Volume.nii.gz")
 
     # Create command and execute.
-    execute_shell_cmd("clitkDicom2Image", [*dcm_series, "-o", volume_path, "-t", "10"])
+    execute_shell_cmd("clitkDicom2Image", os.environ["CLITK_TOOLS_PATH"], [*dcm_series, "-o", volume_path, "-t", "10"])
 
     # Return Volume's path to use the volume later for the RT structure conversion.
     return volume_path
@@ -45,7 +45,11 @@ def dicom_rtst_2_nifty(obj_input_path, study_output_path, volume_path):
     rtstr_path = os.path.join(study_output_path, "RTStruct")
 
     # Create command and execute.
-    execute_shell_cmd("clitkDicomRTStruct2Image", ["-i", dcm_rtstr, "-j", volume_path, "-o", rtstr_path,  "--niigz", "-t", "10"])
+    execute_shell_cmd(
+        "clitkDicomRTStruct2Image",
+        os.environ["CLITK_TOOLS_PATH"],
+        ["-i", dcm_rtstr, "-j", volume_path, "-o", rtstr_path, "--niigz", "-t", "10"]
+    )
 
 
 # Create nifty files from dicom files.
@@ -62,7 +66,8 @@ def extract_from_dicom(dicom_dir, nifty_dir):
         for study in os.listdir(patient_input_path):
             print(f"\t-Study: {study}")
             # Create the respective output path.
-            study_input_path, study_output_path = create_output_structure(patient_input_path, patient_output_path, study)
+            study_input_path, study_output_path = create_output_structure(patient_input_path, patient_output_path,
+                                                                          study)
 
             volume_path = ""
             # Iterate through the study's objects (Image dicom series, REG file, RTStruct file).
@@ -96,16 +101,21 @@ def extract_from_dicom(dicom_dir, nifty_dir):
 
 # Resample MRI instance to the CT instance's physical space.
 def resample_mri_2_ct(ct_mri_pairs):
-    for pair in ct_mri_pairs:
-        print(f"{pair} pair resampling...")
-        ct_instance = ct_mri_pairs[pair][0]
-        mri_instance = ct_mri_pairs[pair][1]
+    for patient in ct_mri_pairs:
+        print(f"{patient} pair resampling...")
+        ct_rtst_instance = ct_mri_pairs[patient][1]
+        mri_rtst_instance = ct_mri_pairs[patient][3]
 
-        split_path = mri_instance.split(".")
+        split_path = mri_rtst_instance.split(".")
         resampled_mri_struct = f"{split_path[0]}_resampled_to_ct.{split_path[1]}.{split_path[2]}"
-        execute_shell_cmd("clitkAffineTransform", ["-i", mri_instance, "-o", resampled_mri_struct, "-l", ct_instance])
 
-        ct_mri_pairs[pair][1] = resampled_mri_struct
+        execute_shell_cmd(
+            "clitkAffineTransform",
+            os.environ["CLITK_TOOLS_PATH"],
+            ["-i", mri_rtst_instance, "-o", resampled_mri_struct, "-l", ct_rtst_instance]
+        )
+
+        ct_mri_pairs[patient][3] = resampled_mri_struct
 
     print("Resampling Done.")
     return ct_mri_pairs

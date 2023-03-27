@@ -4,5 +4,8 @@ from .utils import \
     rename_instance, \
     get_files, \
     fix_filenames, \
-    find_ct_mri_pair, \
+    open_data_frame, \
+    update_dataframe, \
+    find_ct_mri_pairs, \
+    calculate_dice, \
     execute_shell_cmd
