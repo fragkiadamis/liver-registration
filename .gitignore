@@ -1,16 +1,13 @@
 .idea/
 
-# dotenv
-.env
-
 # virtualenv
 .venv
 venv/
 ENV/
 
 # local data
-dicom
-nifty
+data
+*output.xlsx
 
 # Installer logs
 pip-log.txt
