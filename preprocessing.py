@@ -1,9 +1,8 @@
 # Import necessary files and libraries.
-import argparse
 import os
 from subprocess import run
 import SimpleITK as sITK
-from utils import validate_paths, create_output_structures
+from utils import setup_parser, validate_paths, create_output_structures
 
 
 # Traverse through the given dataset paths and create paired paths between the available modalities.
@@ -89,15 +88,7 @@ def crop(input_pairs, output_pairs):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create a database where the processed nifty images are stored.")
-    required_args = parser.add_argument_group("required arguments")
-    required_args.add_argument("-i", help="path to the directory where is the nifty database", required=True)
-    required_args.add_argument("-o", help="path to a directory where to save the processed database", required=True)
-    # The user has to define which CT study is going to be processed for the later process of registration. If the
-    # SPECT-CT, is going to be used later for the registration process along the ceMRI, then the user should define
-    # -c SPECT-CT. -c PET-CT for the PET-CT/ceMRI registration respectively.
-    required_args.add_argument("-s", help="The CT study that is going to be processed e.g -c=SPECT-CT", required=True)
-    args = parser.parse_args()
+    args = setup_parser("messages/preprocessing_parser.json")
 
     input_dir, output_dir, ct_study = args.i, args.o, args.s
 

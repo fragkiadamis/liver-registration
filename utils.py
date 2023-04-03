@@ -1,7 +1,24 @@
+import argparse
+import json
 import os
 import sys
 from shutil import rmtree
 import pandas as pd
+
+
+# Setup the parser and the correct argument messages loaded from the respective json file.
+def setup_parser(json_file):
+    with open(json_file, 'r') as messages:
+        messages = json.load(messages)
+
+        parser = argparse.ArgumentParser(description=messages["description"])
+        required_args = parser.add_argument_group("required arguments")
+
+        for arg in messages["required"]:
+            message = messages["required"][arg]
+            required_args.add_argument(arg, help=message, required=True)
+
+        return parser.parse_args()
 
 
 # Validate paths, create output paths if they do not exist
@@ -15,13 +32,6 @@ def validate_paths(input_dir, output_dir):
         sys.exit("This input directory does not exist.")
 
 
-# Delete the defined directory if it exists and create it again.
-def delete_directory(directory):
-    if os.path.exists(directory):
-        rmtree(directory)
-    os.mkdir(directory)
-
-
 # Create a directory.
 def create_dir(output_path, dir_name):
     dir_output_path = os.path.join(output_path, dir_name)
@@ -33,7 +43,10 @@ def create_dir(output_path, dir_name):
 
 # Create the respective output structures 2 levels deep.
 def create_output_structures(input_dir, output_dir, depth):
-    delete_directory(output_dir)
+    # Reset the directory.
+    if os.path.exists(output_dir):
+        rmtree(output_dir)
+    os.mkdir(output_dir)
 
     # Create 1st level directories.
     for item in os.listdir(input_dir):
@@ -62,6 +75,6 @@ def open_data_frame(file):
 def update_dataframe(df, data, column_name):
     for item in data:
         df.loc[df["Patient"] == item, column_name] = data[item]
-    # Save the data
+    # Save the data.
     df.to_excel("output.xlsx")
     return df

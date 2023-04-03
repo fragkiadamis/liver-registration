@@ -1,0 +1,11 @@
+{
+  "description": "Register a pair of images using the elastix CLI.",
+  "required": {
+    "-i": "Path to the nifty files.",
+    "-o": "Path to the registration output.",
+    "-fm": "Specify fixed modality e.g. -fm SPECT-CT.",
+    "-mm": "Specify moving modality e.g. -mm ceMRI.",
+    "-p": "Path to the parameter files",
+    "-masks": "Set to True if you use masks."
+  }
+}

@@ -1,7 +1,7 @@
-import argparse
+# Import necessary files and libraries.
 import os
 from subprocess import run
-from utils import validate_paths, create_output_structures
+from utils import setup_parser, validate_paths, create_output_structures
 
 
 # Return a list with the files of the directory.
@@ -94,11 +94,7 @@ def extract_from_dicom(study_input, study_output, study):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create the image databases from the raw database")
-    required_args = parser.add_argument_group("required arguments")
-    required_args.add_argument("-i", help="path to the directory where is the dicom database", required=True)
-    required_args.add_argument("-o", help="path to a directory where to save the nifty database", required=True)
-    args = parser.parse_args()
+    args = setup_parser("messages/database_parser.json")
 
     input_dir, output_dir = args.i, args.o
 

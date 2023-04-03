@@ -1,7 +1,7 @@
-import argparse
+# Import necessary files and libraries.
 import os
 from subprocess import run, check_output, CalledProcessError
-from utils import validate_paths, create_output_structures, create_dir
+from utils import setup_parser, validate_paths, create_output_structures, create_dir
 
 
 # Calculate the dice index between 2 RT structures
@@ -79,18 +79,10 @@ def register_volumes(pair, output, par_file, props):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Register a pair of images using the elastix CLI.")
-    required_args = parser.add_argument_group("required arguments")
-    required_args.add_argument("-i", help="Path to the nifty files.", required=True)
-    required_args.add_argument("-o", help="Path to the registration output", required=True)
-    required_args.add_argument("-fm", help="Specify fixed modality e.g. -fm SPECT-CT", required=True)
-    required_args.add_argument("-mm", help="Specify moving modality e.g. -mm ceMRI", required=True)
-    required_args.add_argument("-p", help="Path to the parameter files", required=True)
-    required_args.add_argument("-masks", help="Set to True if you use masks (default=False).")
-    args = parser.parse_args()
+    args = setup_parser("messages/elastix_cli_parser.json")
 
     input_dir, output_dir, fixed_modality = args.i, args.o, args.fm
-    moving_modality, parameters_dir, masks = args.mm, args.p, args.masks
+    moving_modality, parameters_dir, masks = args.mm, args.p, True if args.masks == "True" else False
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
