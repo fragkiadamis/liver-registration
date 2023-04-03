@@ -32,12 +32,15 @@ def create_dir(output_path, dir_name):
 
 
 # Create the respective output structures 2 levels deep.
-def create_output_structures(input_dir, output_dir):
+def create_output_structures(input_dir, output_dir, depth):
     delete_directory(output_dir)
 
     # Create 1st level directories.
     for item in os.listdir(input_dir):
         item_output = create_dir(output_dir, item)
+
+        if depth == 1:
+            continue
 
         # Create 2nd level directories.
         sub_dir = os.path.join(input_dir, item)
@@ -62,34 +65,3 @@ def update_dataframe(df, data, column_name):
     # Save the data
     df.to_excel("output.xlsx")
     return df
-
-
-# Get all the image paths forall the studies for all the patients.
-def get_dataset(root_dir):
-    dataset = {}
-    for patient in os.listdir(root_dir):
-        patient_path = os.path.join(root_dir, patient)
-
-        dataset[patient] = {}
-        for study in os.listdir(patient_path):
-            study_path = os.path.join(patient_path, study)
-
-            dataset[patient][study] = {
-                "volume": os.path.join(study_path, f"{study}_volume.nii.gz"),
-                "rtst_liver": os.path.join(study_path, f"{study}_rtstruct_liver.nii.gz"),
-                "rtst_tumor": os.path.join(study_path, f"{study}_rtstruct_tumor.nii.gz")
-            }
-
-    return dataset
-
-
-# Traverse through the given dataset paths and create paired paths between the available modalities.
-def create_paired_paths(parent_dir, studies):
-    pairs = {}
-    for study in studies:
-        pairs[f"{'CT' if 'CT' in study else 'MRI'}"] = {
-            "volume": os.path.join(parent_dir, study, f"{study}_volume.nii.gz"),
-            "rtstruct_liver": os.path.join(parent_dir, study, f"{study}_rtstruct_liver.nii.gz"),
-            "rtstruct_tumor": os.path.join(parent_dir, study, f"{study}_rtstruct_tumor.nii.gz")
-        }
-    return pairs

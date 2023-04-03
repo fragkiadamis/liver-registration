@@ -104,7 +104,7 @@ def main():
     validate_paths(input_dir, output_dir)
 
     # Create the output respective structures.
-    create_output_structures(input_dir, output_dir)
+    create_output_structures(input_dir, output_dir, depth=2)
 
     # For each patient of the dataset.
     for patient in os.listdir(input_dir):

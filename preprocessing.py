@@ -3,7 +3,19 @@ import argparse
 import os
 from subprocess import check_output
 import SimpleITK as sITK
-from utils import validate_paths, create_paired_paths, create_output_structures
+from utils import validate_paths, create_output_structures
+
+
+# Traverse through the given dataset paths and create paired paths between the available modalities.
+def create_paired_paths(parent_dir, studies):
+    pairs = {}
+    for study in studies:
+        pairs[f"{'CT' if 'CT' in study else 'MRI'}"] = {
+            "volume": os.path.join(parent_dir, study, f"{study}_volume.nii.gz"),
+            "rtstruct_liver": os.path.join(parent_dir, study, f"{study}_rtstruct_liver.nii.gz"),
+            "rtstruct_tumor": os.path.join(parent_dir, study, f"{study}_rtstruct_tumor.nii.gz")
+        }
+    return pairs
 
 
 # Find and return the minimum spacing for each axis between two volumes.
@@ -88,27 +100,25 @@ def main():
     # The user has to define which CT study is going to be processed for the later process of registration. If the
     # SPECT-CT, is going to be used later for the registration process along the ceMRI, then the user should define
     # -c SPECT-CT. -c PET-CT for the PET-CT/ceMRI registration respectively.
-    required_args.add_argument("-c", help="The CT study that is going to be processed e.g -c=SPECT-CT", required=True)
+    required_args.add_argument("-s", help="The CT study that is going to be processed e.g -c=SPECT-CT", required=True)
     args = parser.parse_args()
 
-    input_dir, output_dir, ct_study = args.i, args.o, args.c
+    input_dir, output_dir, ct_study = args.i, args.o, args.s
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
 
     # Create the output respective structures.
-    create_output_structures(input_dir, output_dir)
+    create_output_structures(input_dir, output_dir, depth=2)
 
     # Do the required preprocessing for each of the patients.
     for patient in os.listdir(input_dir):
+        print(f"\n-Cropping patient: {patient}")
         patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
-        input_studies, output_studies = os.listdir(patient_input), os.listdir(patient_output)
-
-        input_studies_pair = [study for study in input_studies if study == ct_study or study == "ceMRI"]
-        output_studies_pair = [study for study in input_studies if study == ct_study or study == "ceMRI"]
-
-        input_pairs = create_paired_paths(patient_input, input_studies_pair)
-        output_pairs = create_paired_paths(patient_output, output_studies_pair)
+        input_studies = [study for study in os.listdir(patient_input) if study == "ceMRI" or study == ct_study]
+        output_studies = [study for study in os.listdir(patient_input) if study == "ceMRI" or study == ct_study]
+        input_pairs = create_paired_paths(patient_input, input_studies)
+        output_pairs = create_paired_paths(patient_output, output_studies)
 
         resample(patient, input_pairs, output_pairs)
         crop(patient, output_pairs, output_pairs)
