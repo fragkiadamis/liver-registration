@@ -42,9 +42,7 @@ def find_minimum(path_1, path_2, prop):
 
 
 # For all the available study pairs, resample the images of the pair for all the patients.
-def resample(patient, input_pairs, output_pairs, spacing=None):
-    print(f"\n-Resampling patient: {patient}")
-
+def resample(input_pairs, output_pairs, spacing=None):
     # If there is not a predefined spacing, get the minimum spacing for each axis between the volumes
     if not spacing:
         spacing = find_minimum(input_pairs["CT"]["volume"], input_pairs["MRI"]["volume"], "spacing")
@@ -63,29 +61,27 @@ def resample(patient, input_pairs, output_pairs, spacing=None):
 
 
 # Crop the pairs. For each study, crop automatically the mask and based on the mask, crop the volume.
-def crop(patient, input_pairs, output_pairs):
-    print(f"\n-Cropping patient: {patient}")
-
+def crop(input_pairs, output_pairs):
     for study in input_pairs:
         print(f"\t-Study: {study}")
 
-        # Crop the mask automatically.
-        liver_input_path = input_pairs[study]["rtstruct_liver"]
-        liver_output_path = output_pairs[study]["rtstruct_liver"]
+        # Crop the liver mask automatically.
+        liver_input = input_pairs[study]["rtstruct_liver"]
+        liver_output = output_pairs[study]["rtstruct_liver"]
 
-        print(f"\t\t-Image: {liver_input_path} ---> {liver_output_path}")
-        check_output(["clitkAutoCrop", "-i", liver_input_path, "-o", liver_output_path])
+        print(f"\t\t-Nifty: {liver_input} ---> {liver_output}")
+        check_output(["clitkAutoCrop", "-i", liver_input, "-o", liver_output])
 
         # Crop the volume and the tumor mask according to the cropped liver mask.
-        volume_input_path = input_pairs[study]["volume"]
-        volume_output_path = output_pairs[study]["volume"]
-        tumor_input_path = input_pairs[study]["rtstruct_tumor"]
-        tumor_output_path = output_pairs[study]["rtstruct_tumor"]
+        volume_input = input_pairs[study]["volume"]
+        volume_output = output_pairs[study]["volume"]
+        tumor_input = input_pairs[study]["rtstruct_tumor"]
+        tumor_output = output_pairs[study]["rtstruct_tumor"]
 
-        print(f"\t\t-Image: {volume_input_path} ---> {volume_output_path}")
-        check_output(["clitkCropImage", "-i", volume_input_path, "--like", liver_output_path, "-o", volume_output_path])
-        print(f"\t\t-Image: {tumor_input_path} ---> {tumor_output_path}")
-        check_output(["clitkCropImage", "-i", tumor_input_path, "--like", liver_output_path, "-o", tumor_output_path])
+        print(f"\t\t-Nifty: {volume_input} ---> {volume_output}")
+        check_output(["clitkCropImage", "-i", volume_input, "--like", liver_output, "-o", volume_output])
+        print(f"\t\t-Nifty: {tumor_input} ---> {tumor_output}")
+        check_output(["clitkCropImage", "-i", tumor_input, "--like", liver_output, "-o", tumor_output])
 
 
 # TODO: Add the function from Felix' preprocessing file (the one in the USB key) that locates identical or very
@@ -113,15 +109,16 @@ def main():
 
     # Do the required preprocessing for each of the patients.
     for patient in os.listdir(input_dir):
-        print(f"\n-Cropping patient: {patient}")
         patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
         input_studies = [study for study in os.listdir(patient_input) if study == "ceMRI" or study == ct_study]
         output_studies = [study for study in os.listdir(patient_input) if study == "ceMRI" or study == ct_study]
         input_pairs = create_paired_paths(patient_input, input_studies)
         output_pairs = create_paired_paths(patient_output, output_studies)
 
-        resample(patient, input_pairs, output_pairs)
-        crop(patient, output_pairs, output_pairs)
+        print(f"\n-Resampling patient: {patient}")
+        resample(input_pairs, output_pairs)
+        print(f"\n-Cropping patient: {patient}")
+        crop(output_pairs, output_pairs)
 
 
 # Use this file as a script and run it.

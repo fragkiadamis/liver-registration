@@ -46,17 +46,16 @@ def apply_transform(transformation_file, patient_pair, transformation_dir):
     return os.path.join(transformation_dir, "result.nii.gz")
 
 
-def register_pair(input_pair, transform, use_masks, output, par_file_path, t0=None):
+def register_pair(input_pair, transform, use_masks, output, par_file_path, init_transform=None):
     print(f"\t-{transform} Transform.")
-    print(output)
 
     # Create elastix argument list.
     elx_arguments = ["-f", input_pair["fixed"]["volume"], "-m", input_pair["moving"]["volume"],
                      "-out", output, "-p", f"{par_file_path}"]
 
     # Add initial transform to the arguments, if available.
-    if t0:
-        elx_arguments.extend(["-t0", t0])
+    if init_transform:
+        elx_arguments.extend(["-t0", init_transform])
 
     # Add masks if the option is enabled.
     if use_masks:
@@ -76,14 +75,14 @@ def main():
     required_args = parser.add_argument_group("required arguments")
     required_args.add_argument("-i", help="Path to the nifty files.", required=True)
     required_args.add_argument("-o", help="Path to the registration output", required=True)
-    required_args.add_argument("-f", help="Specify fixed image e.g. -f SPECT-CT", required=True)
-    required_args.add_argument("-m", help="Specify moving image e.g. -m ceMRI", required=True)
+    required_args.add_argument("-fm", help="Specify fixed modality e.g. -fm SPECT-CT", required=True)
+    required_args.add_argument("-mm", help="Specify moving modality e.g. -mm ceMRI", required=True)
     required_args.add_argument("-p", help="Path to the parameter files", required=True)
     required_args.add_argument("-masks", help="Set to True if you use masks (default=False).")
     args = parser.parse_args()
 
-    input_dir, output_dir, fixed = args.i, args.o, args.f
-    moving, parameters_dir, use_masks = args.m, args.p, args.masks
+    input_dir, output_dir, fixed_modality = args.i, args.o, args.fm
+    moving_modality, parameters_dir, use_masks = args.mm, args.p, args.masks
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
@@ -97,12 +96,12 @@ def main():
         patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
         input_pairs = {
             "fixed": {
-                "volume": os.path.join(patient_input, fixed, "volume.nii.gz"),
-                "mask": os.path.join(patient_input, fixed, "rtstruct_liver.nii.gz")
+                "volume": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_volume.nii.gz"),
+                "mask": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_rtstruct_liver.nii.gz")
             },
             "moving": {
-                "volume": os.path.join(patient_input, moving, "volume.nii.gz"),
-                "mask": os.path.join(patient_input, moving, "rtstruct_liver.nii.gz")
+                "volume": os.path.join(patient_input, moving_modality, f"{moving_modality}_volume.nii.gz"),
+                "mask": os.path.join(patient_input, moving_modality, f"{moving_modality}_rtstruct_liver.nii.gz")
             }
         }
 
@@ -113,7 +112,8 @@ def main():
             os.mkdir(transform_output)
             par_file_path = os.path.join(parameters_dir, par_file)
             init_transform = register_pair(input_pairs, transform, use_masks, transform_output,
-                                           par_file_path, t0=init_transform)
+                                           par_file_path, init_transform=init_transform)
+        break
 
 
 # Use this file as a script and run it.
