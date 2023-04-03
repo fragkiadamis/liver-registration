@@ -1,7 +1,7 @@
 # Import necessary files and libraries.
 import argparse
 import os
-from subprocess import check_output
+from subprocess import run
 import SimpleITK as sITK
 from utils import validate_paths, create_output_structures
 
@@ -54,9 +54,9 @@ def resample(input_pairs, output_pairs, spacing=None):
             img_output = output_pairs[study][image]
             print(f"\t\t-Image: {img_input} ---> {img_output}")
 
-            check_output(["clitkAffineTransform", "-i", img_input, "-o", img_output, "-l", input_pairs["CT"]["volume"]])
+            run(["clitkAffineTransform", "-i", img_input, "-o", img_output, "-l", input_pairs["CT"]["volume"]])
 
-            # check_output(["clitkAffineTransform", "-i", img_path, "-o", img_path, "--adaptive",
+            # run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "--adaptive",
             #               f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}"])
 
 
@@ -70,7 +70,7 @@ def crop(input_pairs, output_pairs):
         liver_output = output_pairs[study]["rtstruct_liver"]
 
         print(f"\t\t-Nifty: {liver_input} ---> {liver_output}")
-        check_output(["clitkAutoCrop", "-i", liver_input, "-o", liver_output])
+        run(["clitkAutoCrop", "-i", liver_input, "-o", liver_output])
 
         # Crop the volume and the tumor mask according to the cropped liver mask.
         volume_input = input_pairs[study]["volume"]
@@ -79,9 +79,9 @@ def crop(input_pairs, output_pairs):
         tumor_output = output_pairs[study]["rtstruct_tumor"]
 
         print(f"\t\t-Nifty: {volume_input} ---> {volume_output}")
-        check_output(["clitkCropImage", "-i", volume_input, "--like", liver_output, "-o", volume_output])
+        run(["clitkCropImage", "-i", volume_input, "--like", liver_output, "-o", volume_output])
         print(f"\t\t-Nifty: {tumor_input} ---> {tumor_output}")
-        check_output(["clitkCropImage", "-i", tumor_input, "--like", liver_output, "-o", tumor_output])
+        run(["clitkCropImage", "-i", tumor_input, "--like", liver_output, "-o", tumor_output])
 
 
 # TODO: Add the function from Felix' preprocessing file (the one in the USB key) that locates identical or very

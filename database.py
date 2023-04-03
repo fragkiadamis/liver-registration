@@ -1,6 +1,6 @@
 import argparse
 import os
-from subprocess import check_output
+from subprocess import run
 from utils import validate_paths, create_output_structures
 
 
@@ -73,7 +73,7 @@ def extract_from_dicom(study_input, study_output, study):
         series_files = get_files(series_path)
         volume_path = os.path.join(study_output, f"{study}_volume.nii.gz")
         print(f"\t\t-Extract series: {series} ---> {volume_path}")
-        check_output(["clitkDicom2Image", *series_files, "-o", volume_path, "-t", "10"])
+        run(["clitkDicom2Image", *series_files, "-o", volume_path, "-t", "10"])
 
     # Extract the masks from the RT structures in nifty format. Use the extracted volume from above.
     for rt_structure in dicom_rtstr:
@@ -81,7 +81,7 @@ def extract_from_dicom(study_input, study_output, study):
         rtstruct_file = get_files(rtstruct_path)[0]
         rtst_basename = os.path.join(study_output, f"{study}_rtstruct")
         print(f"\t\t-Extract RT struct: {rtstruct_path} ---> {rtst_basename}.nii.gz")
-        check_output(
+        run(
             ["clitkDicomRTStruct2Image", "-i", rtstruct_file, "-j", volume_path,
              "-o", rtst_basename, "--niigz", "-t", "10"]
         )
