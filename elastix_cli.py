@@ -164,6 +164,7 @@ def main():
             print(f"\t\t-New Tumor Dice: {tumor_dice}.")
 
     dataframe_averages(df)
+    df.to_excel("output/exp_00.xlsx")
 
 
 # Use this file as a script and run it.

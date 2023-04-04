@@ -76,7 +76,6 @@ def open_data_frame(file):
 # Add a new column to the dataframe.
 def update_dataframe(df, patient, value, column_name):
     df.loc[patient, column_name] = value
-    df.to_excel("output.xlsx")
     return df
 
 
@@ -86,4 +85,3 @@ def dataframe_averages(df):
     df.loc['Max'] = df.max()
     df.loc['Mean'] = df.mean()
     df.loc['Median'] = df.median()
-    df.to_excel("output.xlsx")
