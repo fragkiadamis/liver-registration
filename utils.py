@@ -64,17 +64,22 @@ def create_output_structures(input_dir, output_dir, depth):
 # Create a dataframe and load the xl file if it exists.
 def open_data_frame(file):
     df = pd.DataFrame()
-    # Open the file with all the data (if it exists).
+
+    # Delete previous output if it exists.
     if file in os.listdir("./"):
-        df = pd.read_excel(file, index_col=0)
+        os.remove(file)
 
     return df
 
 
 # Add a new column to the dataframe.
-def update_dataframe(df, data, column_name):
-    for item in data:
-        df.loc[df["Patient"] == item, column_name] = data[item]
-    # Save the data.
+def update_dataframe(df, patient, value, column_name):
+    df.loc[patient, column_name] = value
     df.to_excel("output.xlsx")
     return df
+
+
+# Calculate average for each column of the dataframe.
+def dataframe_averages(df):
+    df.loc['Average'] = df.mean()
+    df.to_excel("output.xlsx")

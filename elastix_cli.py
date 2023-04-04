@@ -1,13 +1,30 @@
 # Import necessary files and libraries.
 import os
 from subprocess import run, check_output, CalledProcessError
-from utils import setup_parser, validate_paths, create_output_structures, create_dir
+from utils import setup_parser, validate_paths, \
+    create_output_structures, create_dir, \
+    update_dataframe, open_data_frame, dataframe_averages
 
 
 # Calculate the dice index between 2 RT structures
 def calculate_dice(masks):
     dice_index = check_output(["clitkDice", "-i", masks[0], "-j", masks[1]])
     dice_index = float(dice_index.decode("utf-8"))
+
+    return dice_index
+
+
+# Transform the moving mask in the physical space of the fixed to calculate the initial dice.
+def calculate_initial_dice(patient_dir, fixed, moving):
+    # Transform the moving mask in the physical space of the fixed mask.
+    t_output = os.path.join(patient_dir, "transfromed_mask.nii.gz")
+    run(["clitkAffineTransform", "-i", moving["liver_mask"], "-o", t_output, "-l", fixed["liver_mask"]])
+
+    # Calculate dice.
+    dice_index = calculate_dice((fixed["liver_mask"], t_output))
+
+    # Remove transformed mask.
+    os.remove(t_output)
 
     return dice_index
 
@@ -62,15 +79,12 @@ def register_volumes(pair, output, par_file, props):
     if props["masks"]:
         elx_arguments.extend(["-fMask", pair["fixed"]["liver_mask"], "-mMask", pair["moving"]["liver_mask"]])
 
-    transform_file = ""
+    dice_index, transform_file = 0, ""
     try:
         # Perform registration and replace the transformation file with the new one.
+        print(elx_arguments, *elx_arguments)
         run(["elastix", *elx_arguments])
         transform_file = os.path.join(output, "TransformParameters.0.txt")
-        print(f"\t\t-Applying transform to moving mask.")
-        transformed_liver_mask = apply_transform(transform_file, pair["moving"]["liver_mask"], output)
-        dice_index = calculate_dice((pair["fixed"]["liver_mask"], transformed_liver_mask))
-        print(f"\t\t-Dice Index {dice_index}.")
     except CalledProcessError as e:
         print(f"\t\033[91m\tFailed!\033[0m")
 
@@ -90,8 +104,15 @@ def main():
     # Create the output respective structures.
     create_output_structures(input_dir, output_dir, depth=1)
 
+    patients_list = os.listdir(input_dir)
+
+    # Create the output dataframe and add the patients
+    df = open_data_frame("output.xlsx")
+    df.index = patients_list
+
     # Start registration for each patient in the dataset.
-    for patient in os.listdir(input_dir):
+    initial_indices = {}
+    for patient in patients_list:
         print(f"\n-Registering patient: {patient}")
         patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
         pair = {
@@ -105,14 +126,31 @@ def main():
             }
         }
 
-        init_transform = ""
+        # Calculate the initial dice index and save the results.
+        initial_dice = calculate_initial_dice(patient_input, pair["fixed"], pair["moving"])
+        df = update_dataframe(df, patient, initial_dice, "Initial Dice Index")
+        print(f"\t-Initial Dice Index: {initial_dice}")
+
+        transform_file = ""
         for par_file in os.listdir(parameters_dir):
             transform = par_file.split(".")[0]
             transform_output = create_dir(patient_output, transform)
             par_file = os.path.join(parameters_dir, par_file)
+
+            # Register volumes.
             print(f"\t-{transform} Transform.")
-            init_transform = register_volumes(pair, transform_output, par_file, {"t0": init_transform, "masks": masks})
-        break
+            transform_file = register_volumes(pair, transform_output, par_file, {"t0": transform_file, "masks": masks})
+
+            # Apply transformation of moving volume to moving mask.
+            print(f"\t\t-Applying transform to moving mask.")
+            transformed_liver_mask = apply_transform(transform_file, pair["moving"]["liver_mask"], transform_output)
+
+            # Calculate dice index and update dataframe.
+            dice_index = calculate_dice((pair["fixed"]["liver_mask"], transformed_liver_mask))
+            update_dataframe(df, patient, dice_index, transform)
+            print(f"\t\t-New Dice Index {dice_index}.")
+
+    dataframe_averages(df)
 
 
 # Use this file as a script and run it.

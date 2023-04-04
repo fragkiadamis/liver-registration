@@ -53,10 +53,8 @@ def resample(input_pairs, output_pairs, spacing=None):
             img_output = output_pairs[study][image]
             print(f"\t\t-Image: {img_input} ---> {img_output}")
 
-            run(["clitkAffineTransform", "-i", img_input, "-o", img_output, "-l", input_pairs["CT"]["volume"]])
-
-            # run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "--adaptive",
-            #               f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}"])
+            run(["clitkAffineTransform", "-i", img_input, "-o", img_output, "--adaptive",
+                 f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}"])
 
 
 # Crop the pairs. For each study, crop automatically the mask and based on the mask, crop the volume.
