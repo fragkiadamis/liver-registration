@@ -9,37 +9,37 @@
 // ********** Components
 
 (Registration "MultiResolutionRegistration")
-(FixedImagePyramid "FixedSmoothingImagePyramid")
-(MovingImagePyramid "MovingSmoothingImagePyramid")
+(FixedImagePyramid "FixedRecursiveImagePyramid")
+(MovingImagePyramid "MovingRecursiveImagePyramid")
 (Interpolator "BSplineInterpolator")
 (Metric "AdvancedMattesMutualInformation")
-(Optimizer "StandardGradientDescent")
+(Optimizer "AdaptiveStochasticGradientDescent")
 (ResampleInterpolator "FinalBSplineInterpolator")
 (Resampler "DefaultResampler")
-(Transform "RecursiveBSplineTransform")
+(Transform "EulerTransform")
 
 
 // ********** Pyramid
 
 // Total number of resolutions
 (NumberOfResolutions 3)
-//(ImagePyramidSchedule 8 8 4 4 4 2 2 2 1)
 
 
 // ********** Transform
 
-//(FinalGridSpacingInPhysicalUnits 20.0 20.0 20.0)
-//(GridSpacingSchedule 4.0 2.0 1.0)
+//(Scaler 500000.0)
+//(CenterOfRotation 128 128 90)
+(AutomaticTransformInitialization "true")
 (HowToCombineTransforms "Compose")
 
 
 // ********** Optimizer
 
 // Maximum number of iterations in each resolution level:
-(MaximumNumberOfIterations 300)
+(MaximumNumberOfIterations 600 600 600 900)
 
 //SP: Param_a in each resolution level. a_k = a/(A+k+1)^alpha
-(SP_a 2000.0)
+(SP_a 1000.0 1000.0 500.0 500.0)
 
 //SP: Param_alpha in each resolution level. a_k = a/(A+k+1)^alpha
 (SP_alpha 0.602)
@@ -66,15 +66,15 @@
 (ResultImagePixelType "float")
 (ResultImageFormat "nii.gz")
 (ShowExactMetricValue "false")
-//(ErodeMask "false")
+(ErodeMask "false")
 
 
 // ********** ImageSampler
 
 //Number of spatial samples used to compute the mutual information in each resolution level:
 (ImageSampler "RandomCoordinate")
-(NumberOfSpatialSamples 3000) // For RandomCoordinate
-(NewSamplesEveryIteration "true") // For RandomCoordinate
+(NumberOfSpatialSamples 10000)
+(NewSamplesEveryIteration "true")
 
 
 // ********** Interpolator and Resampler

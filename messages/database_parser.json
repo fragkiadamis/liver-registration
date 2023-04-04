@@ -1,7 +1,11 @@
 {
   "description": "Create the image databases from the raw database.",
-  "required": {
-    "-i": "Path to the directory where is the dicom database.",
-    "-o": "Path to a directory where to save the nifty database."
+  "arguments": {
+    "required": {
+      "-i": "Path to the directory where is the dicom database.",
+      "-o": "Path to a directory where to save the nifty database."
+    },
+    "optional": {
+    }
   }
 }

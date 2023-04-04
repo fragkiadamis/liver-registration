@@ -14,9 +14,10 @@ def setup_parser(json_file):
         parser = argparse.ArgumentParser(description=messages["description"])
         required_args = parser.add_argument_group("required arguments")
 
-        for arg in messages["required"]:
-            message = messages["required"][arg]
-            required_args.add_argument(arg, help=message, required=True)
+        for cat in messages["arguments"]:
+            for arg in messages["arguments"][cat]:
+                message = messages["arguments"][cat][arg]
+                required_args.add_argument(arg, help=message, required=True if cat == "required" else False)
 
         return parser.parse_args()
 
@@ -79,7 +80,10 @@ def update_dataframe(df, patient, value, column_name):
     return df
 
 
-# Calculate average for each column of the dataframe.
+# Calculate mean and median for each column of the dataframe.
 def dataframe_averages(df):
-    df.loc['Average'] = df.mean()
+    df.loc['Min'] = df.min()
+    df.loc['Max'] = df.max()
+    df.loc['Mean'] = df.mean()
+    df.loc['Median'] = df.median()
     df.to_excel("output.xlsx")

@@ -1,6 +1,6 @@
 # Import necessary files and libraries.
 import os
-from subprocess import run, check_output, CalledProcessError
+from subprocess import check_output, CalledProcessError
 from utils import setup_parser, validate_paths, \
     create_output_structures, create_dir, \
     update_dataframe, open_data_frame, dataframe_averages
@@ -17,16 +17,21 @@ def calculate_dice(masks):
 # Transform the moving mask in the physical space of the fixed to calculate the initial dice.
 def calculate_initial_dice(patient_dir, fixed, moving):
     # Transform the moving mask in the physical space of the fixed mask.
-    t_output = os.path.join(patient_dir, "transfromed_mask.nii.gz")
-    run(["clitkAffineTransform", "-i", moving["liver_mask"], "-o", t_output, "-l", fixed["liver_mask"]])
+    lt_output = os.path.join(patient_dir, "transfromed_liver_mask.nii.gz")
+    check_output(["clitkAffineTransform", "-i", moving["liver_mask"], "-o", lt_output, "-l", fixed["liver_mask"]])
+
+    tt_output = os.path.join(patient_dir, "transfromed_tumor_mask.nii.gz")
+    check_output(["clitkAffineTransform", "-i", moving["tumor_mask"], "-o", tt_output, "-l", fixed["tumor_mask"]])
 
     # Calculate dice.
-    dice_index = calculate_dice((fixed["liver_mask"], t_output))
+    liver_dice = calculate_dice((fixed["liver_mask"], lt_output))
+    tumor_dice = calculate_dice((fixed["tumor_mask"], tt_output))
 
-    # Remove transformed mask.
-    os.remove(t_output)
+    # Remove transformed masks.
+    os.remove(lt_output)
+    os.remove(tt_output)
 
-    return dice_index
+    return liver_dice, tumor_dice
 
 
 # Open file and edit the bspline interpolation order.
@@ -56,7 +61,7 @@ def apply_transform(transform_file, mask, transformation_dir):
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "3", "new": "0"})
 
     # Apply transformation to the mask.
-    run(["transformix", "-in", mask, "-out", transformation_dir, "-tp", transform_file])
+    check_output(["transformix", "-in", mask, "-out", transformation_dir, "-tp", transform_file])
 
     # Reset bspline interpolation order to 3.
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "3", "new": "0"})
@@ -68,8 +73,7 @@ def apply_transform(transform_file, mask, transformation_dir):
 # Register the input pair using elastix and the defined parameters file.
 def register_volumes(pair, output, par_file, props):
     # Create elastix argument list.
-    elx_arguments = ["-f", pair["fixed"]["volume"], "-m", pair["moving"]["volume"],
-                     "-out", output, "-p", f"{par_file}"]
+    elx_arguments = ["-f", pair["fixed"]["volume"], "-m", pair["moving"]["volume"], "-out", output, "-p", par_file]
 
     # Add initial transform file to the arguments, if available.
     if props["t0"]:
@@ -79,24 +83,21 @@ def register_volumes(pair, output, par_file, props):
     if props["masks"]:
         elx_arguments.extend(["-fMask", pair["fixed"]["liver_mask"], "-mMask", pair["moving"]["liver_mask"]])
 
-    dice_index, transform_file = 0, ""
     try:
         # Perform registration and replace the transformation file with the new one.
-        print(elx_arguments, *elx_arguments)
-        run(["elastix", *elx_arguments])
-        transform_file = os.path.join(output, "TransformParameters.0.txt")
+        check_output(["elastix", *elx_arguments])
+        # Return the transform file so that it can be used to the next transformation.
+        return os.path.join(output, "TransformParameters.0.txt")
     except CalledProcessError as e:
         print(f"\t\033[91m\tFailed!\033[0m")
-
-    # Return the transform file so that it can be used to the next transformation.
-    return transform_file
+        return -1
 
 
 def main():
     args = setup_parser("messages/elastix_cli_parser.json")
 
     input_dir, output_dir, fixed_modality = args.i, args.o, args.fm
-    moving_modality, parameters_dir, masks = args.mm, args.p, True if args.masks == "True" else False
+    moving_modality, parameters_dir, masks = args.mm, args.p, args.masks
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
@@ -107,31 +108,34 @@ def main():
     patients_list = os.listdir(input_dir)
 
     # Create the output dataframe and add the patients
-    df = open_data_frame("output.xlsx")
+    df = open_data_frame("no_crop_spacing_111_output.xlsx")
     df.index = patients_list
 
     # Start registration for each patient in the dataset.
-    initial_indices = {}
     for patient in patients_list:
         print(f"\n-Registering patient: {patient}")
         patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
         pair = {
             "fixed": {
                 "volume": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_volume.nii.gz"),
-                "liver_mask": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_rtstruct_liver.nii.gz")
+                "liver_mask": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_rtstruct_liver.nii.gz"),
+                "tumor_mask": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_rtstruct_tumor.nii.gz")
             },
             "moving": {
                 "volume": os.path.join(patient_input, moving_modality, f"{moving_modality}_volume.nii.gz"),
-                "liver_mask": os.path.join(patient_input, moving_modality, f"{moving_modality}_rtstruct_liver.nii.gz")
+                "liver_mask": os.path.join(patient_input, moving_modality, f"{moving_modality}_rtstruct_liver.nii.gz"),
+                "tumor_mask": os.path.join(patient_input, moving_modality, f"{moving_modality}_rtstruct_tumor.nii.gz")
             }
         }
 
         # Calculate the initial dice index and save the results.
         initial_dice = calculate_initial_dice(patient_input, pair["fixed"], pair["moving"])
-        df = update_dataframe(df, patient, initial_dice, "Initial Dice Index")
-        print(f"\t-Initial Dice Index: {initial_dice}")
+        df = update_dataframe(df, patient, initial_dice[0], "Initial Liver Dice")
+        df = update_dataframe(df, patient, initial_dice[1], "Initial Tumor Dice")
+        print(f"\t-Initial Liver Dice: {initial_dice[0]}")
+        print(f"\t-Initial Tumor Dice: {initial_dice[1]}")
 
-        transform_file = ""
+        results = ""
         for par_file in os.listdir(parameters_dir):
             transform = par_file.split(".")[0]
             transform_output = create_dir(patient_output, transform)
@@ -139,16 +143,25 @@ def main():
 
             # Register volumes.
             print(f"\t-{transform} Transform.")
-            transform_file = register_volumes(pair, transform_output, par_file, {"t0": transform_file, "masks": masks})
+            results = register_volumes(pair, transform_output, par_file, {"t0": results, "masks": masks})
 
-            # Apply transformation of moving volume to moving mask.
-            print(f"\t\t-Applying transform to moving mask.")
-            transformed_liver_mask = apply_transform(transform_file, pair["moving"]["liver_mask"], transform_output)
+            # In case of failure to finish the registration process.
+            if results == -1:
+                df = update_dataframe(df, patient, -1, transform)
+                break
 
-            # Calculate dice index and update dataframe.
-            dice_index = calculate_dice((pair["fixed"]["liver_mask"], transformed_liver_mask))
-            update_dataframe(df, patient, dice_index, transform)
-            print(f"\t\t-New Dice Index {dice_index}.")
+            # Apply transformation of moving volume to moving masks and calculate dice.
+            print(f"\t\t-Applying transform to moving masks.")
+            transformed_liver_mask = apply_transform(results, pair["moving"]["liver_mask"], transform_output)
+            liver_dice = calculate_dice((pair["fixed"]["liver_mask"], transformed_liver_mask))
+            df = update_dataframe(df, patient, liver_dice, f"{transform} (Liver)")
+
+            transformed_tumor_mask = apply_transform(results, pair["moving"]["tumor_mask"], transform_output)
+            tumor_dice = calculate_dice((pair["fixed"]["tumor_mask"], transformed_tumor_mask))
+            df = update_dataframe(df, patient, tumor_dice, f"{transform} (Tumor)")
+
+            print(f"\t\t-New Liver Dice: {liver_dice}.")
+            print(f"\t\t-New Tumor Dice: {tumor_dice}.")
 
     dataframe_averages(df)
 

@@ -1,8 +1,12 @@
 {
   "description": "Create a database where the processed nifty images are stored.",
-  "required": {
-    "-i": "Path to the directory where the nifty database exists.",
-    "-o": "Path to the directory where the processed database is going to be saved.",
-    "-s": "The CT study that is going to be processed e.g -c SPECT-CT"
+  "arguments": {
+    "required": {
+      "-i": "Path to the directory where the nifty database exists.",
+      "-o": "Path to the directory where the processed database is going to be saved.",
+      "-s": "The CT study that is going to be processed e.g -c SPECT-CT"
+    },
+    "optional": {
+    }
   }
 }
