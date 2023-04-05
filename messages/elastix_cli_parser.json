@@ -4,12 +4,13 @@
     "required": {
       "-i": "Path to the nifty files.",
       "-o": "Path to the registration output.",
-      "-fm": "Specify fixed modality e.g. -fm SPECT-CT.",
-      "-mm": "Specify moving modality e.g. -mm ceMRI.",
       "-p": "Path to the parameter files"
     },
     "optional": {
-      "-masks": "Set to True if you use masks."
+      "-masks": "Set to 1 if you want to use masks.",
+      "-fm": "Specify fixed modality e.g. -fm SPECT-CT. Default is SPECT-CT",
+      "-mm": "Specify moving modality e.g. -mm ceMRI. Default is ceMRI",
+      "-t": "Specify the type you want to register ('volume' or 'liver' or 'liver_box'). Default is volumes"
     }
   }
 }

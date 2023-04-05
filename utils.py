@@ -62,14 +62,19 @@ def create_output_structures(input_dir, output_dir, depth):
             create_dir(item_output, sub_item)
 
 
+# Rename a directory or a file
+def rename_instance(working_dir, old_name, new_name):
+    old_path = os.path.join(working_dir, old_name)
+    new_path = os.path.join(working_dir, new_name)
+    os.rename(old_path, new_path)
+
+    return new_path
+
+
 # Create a dataframe and load the xl file if it exists.
-def open_data_frame(file):
+def open_data_frame(index_list):
     df = pd.DataFrame()
-
-    # Delete previous output if it exists.
-    if file in os.listdir("./"):
-        os.remove(file)
-
+    df.index = index_list
     return df
 
 
@@ -85,3 +90,17 @@ def dataframe_averages(df):
     df.loc['Max'] = df.max()
     df.loc['Mean'] = df.mean()
     df.loc['Median'] = df.median()
+
+
+# Console colors.
+class ConsoleColors:
+    HEADER = '\033[95m'
+    OK_BLUE = '\033[94m'
+    OK_CYAN = '\033[96m'
+    OK_GREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    END = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+

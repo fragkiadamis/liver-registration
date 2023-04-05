@@ -1,37 +1,22 @@
 # Import necessary files and libraries.
 import os
+import sys
 from subprocess import check_output, CalledProcessError
 from utils import setup_parser, validate_paths, \
     create_output_structures, create_dir, \
-    update_dataframe, open_data_frame, dataframe_averages
+    update_dataframe, open_data_frame, dataframe_averages,\
+    rename_instance, ConsoleColors
 
 
 # Calculate the dice index between 2 RT structures
 def calculate_dice(masks):
-    dice_index = check_output(["clitkDice", "-i", masks[0], "-j", masks[1]])
-    dice_index = float(dice_index.decode("utf-8"))
+    liver_dice = check_output(["clitkDice", "-i", masks[0]['liver'], "-j", masks[1]['liver']])
+    tumor_dice = check_output(["clitkDice", "-i", masks[0]['tumor'], "-j", masks[1]['tumor']])
 
-    return dice_index
-
-
-# Transform the moving mask in the physical space of the fixed to calculate the initial dice.
-def calculate_initial_dice(patient_dir, fixed, moving):
-    # Transform the moving mask in the physical space of the fixed mask.
-    lt_output = os.path.join(patient_dir, "transfromed_liver_mask.nii.gz")
-    check_output(["clitkAffineTransform", "-i", moving["liver_mask"], "-o", lt_output, "-l", fixed["liver_mask"]])
-
-    tt_output = os.path.join(patient_dir, "transfromed_tumor_mask.nii.gz")
-    check_output(["clitkAffineTransform", "-i", moving["tumor_mask"], "-o", tt_output, "-l", fixed["tumor_mask"]])
-
-    # Calculate dice.
-    liver_dice = calculate_dice((fixed["liver_mask"], lt_output))
-    tumor_dice = calculate_dice((fixed["tumor_mask"], tt_output))
-
-    # Remove transformed masks.
-    os.remove(lt_output)
-    os.remove(tt_output)
-
-    return liver_dice, tumor_dice
+    return {
+        "liver": float(liver_dice.decode("utf-8")),
+        "tumor": float(tumor_dice.decode("utf-8"))
+    }
 
 
 # Open file and edit the bspline interpolation order.
@@ -56,115 +41,127 @@ def change_transform_file(file_path, prop, values):
 
 
 # Apply the transformation parameters to the masks.
-def apply_transform(transform_file, mask, transformation_dir):
+def apply_transform(transform_file, img_path, img_type, transformation_dir):
     # Change the bspline interpolation order from 3 to 0 to apply the transformation to the binary mask.
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "3", "new": "0"})
 
     # Apply transformation to the mask.
-    check_output(["transformix", "-in", mask, "-out", transformation_dir, "-tp", transform_file])
+    check_output(["transformix", "-in", img_path, "-out", transformation_dir, "-tp", transform_file])
 
     # Reset bspline interpolation order to 3.
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "3", "new": "0"})
 
-    # Return the resampled mask path.
-    return os.path.join(transformation_dir, "result.nii.gz")
+    # Rename the transformed file and return the path.
+    rename_instance(transformation_dir, "result.nii.gz", f"{img_type}.nii.gz")
 
 
 # Register the input pair using elastix and the defined parameters file.
-def register_volumes(pair, output, par_file, props):
+def register_images(pair, img_type, output, par_file, props):
     # Create elastix argument list.
-    elx_arguments = ["-f", pair["fixed"]["volume"], "-m", pair["moving"]["volume"], "-out", output, "-p", par_file]
+    elx_arguments = ["-f", pair["fixed"][img_type], "-m", pair["moving"][img_type], "-out", output, "-p", par_file]
 
     # Add initial transform file to the arguments, if available.
-    if props["t0"]:
-        elx_arguments.extend(["-t0", props["t0"]])
+    if props["init_transform"]:
+        elx_arguments.extend(["-t0", props["init_transform"]])
 
-    # Add masks if the option is enabled.
-    if props["masks"]:
-        elx_arguments.extend(["-fMask", pair["fixed"]["liver_mask"], "-mMask", pair["moving"]["liver_mask"]])
+    # If the use of masks is defined, use them only to the files that are marked for mask usage.
+    if props["masks"] and "_Mask" in par_file:
+        elx_arguments.extend(["-fMask", pair["fixed"]["liver_mask"]])
 
     try:
-        # Perform registration and replace the transformation file with the new one.
+        # Perform registration, rename the resulted image and return the image and the transformation.
         check_output(["elastix", *elx_arguments])
-        # Return the transform file so that it can be used to the next transformation.
-        return os.path.join(output, "TransformParameters.0.txt")
+        result_img_path = rename_instance(output, "result.0.nii.gz", f"{img_type}.nii.gz")
+        return result_img_path, os.path.join(output, "TransformParameters.0.txt")
     except CalledProcessError as e:
-        print(f"\t\033[91m\tFailed!\033[0m")
+        print(f"\t\t{ConsoleColors.FAIL}Failed!{ConsoleColors.END}")
         return -1
+
+
+# Return into a dictionary the fixed and moving paths
+def get_pair_paths(patient_input, fixed_modality, moving_modality):
+    return {
+        "fixed": {
+            "volume": os.path.join(patient_input, fixed_modality, "volume.nii.gz"),
+            "liver": os.path.join(patient_input, fixed_modality, "liver.nii.gz"),
+            "tumor": os.path.join(patient_input, fixed_modality, "tumor.nii.gz")
+        },
+        "moving": {
+            "volume": os.path.join(patient_input, moving_modality, "volume.nii.gz"),
+            "liver": os.path.join(patient_input, moving_modality, "liver.nii.gz"),
+            "tumor": os.path.join(patient_input, moving_modality, "tumor.nii.gz")
+        }
+    }
 
 
 def main():
     args = setup_parser("messages/elastix_cli_parser.json")
+    # Set required and optional arguments.
+    input_dir, output_dir, parameters_dir = args.i, args.o, args.p
+    fixed_modality = args.fm if args.fm else "SPECT-CT"
+    moving_modality = args.mm if args.fm else "ceMRI"
+    masks = True if args.masks else False
+    img_type = args.t if args.t else "volume"
 
-    input_dir, output_dir, fixed_modality = args.i, args.o, args.fm
-    moving_modality, parameters_dir, masks = args.mm, args.p, args.masks
+    # Avoid registering the masks with the use of the masks (see it in the future...)
+    if masks and (img_type == "liver" or img_type == "tumor" or img_type == "liver_box"):
+        sys.exit("Can't use masks while registering the masks...")
 
-    # Validate input and output paths.
+    # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
-
-    # Create the output respective structures.
     create_output_structures(input_dir, output_dir, depth=1)
-
     patients_list = os.listdir(input_dir)
-
-    # Create the output dataframe and add the patients
-    df = open_data_frame("no_crop_spacing_111_output.xlsx")
-    df.index = patients_list
+    df = open_data_frame(patients_list)
 
     # Start registration for each patient in the dataset.
+    print(f"\n{ConsoleColors.OK_GREEN}Registering {moving_modality} on {fixed_modality}{ConsoleColors.END}")
     for patient in patients_list:
-        print(f"\n-Registering patient: {patient}")
+        print(f"-Registering patient: {patient}")
         patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
-        pair = {
-            "fixed": {
-                "volume": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_volume.nii.gz"),
-                "liver_mask": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_rtstruct_liver.nii.gz"),
-                "tumor_mask": os.path.join(patient_input, fixed_modality, f"{fixed_modality}_rtstruct_tumor.nii.gz")
-            },
-            "moving": {
-                "volume": os.path.join(patient_input, moving_modality, f"{moving_modality}_volume.nii.gz"),
-                "liver_mask": os.path.join(patient_input, moving_modality, f"{moving_modality}_rtstruct_liver.nii.gz"),
-                "tumor_mask": os.path.join(patient_input, moving_modality, f"{moving_modality}_rtstruct_tumor.nii.gz")
-            }
-        }
+        pair = get_pair_paths(patient_input, fixed_modality, moving_modality)
 
         # Calculate the initial dice index and save the results.
-        initial_dice = calculate_initial_dice(patient_input, pair["fixed"], pair["moving"])
-        df = update_dataframe(df, patient, initial_dice[0], "Initial Liver Dice")
-        df = update_dataframe(df, patient, initial_dice[1], "Initial Tumor Dice")
-        print(f"\t-Initial Liver Dice: {initial_dice[0]}")
-        print(f"\t-Initial Tumor Dice: {initial_dice[1]}")
+        dice = calculate_dice((pair["fixed"], pair["moving"]))
+        for idx in dice:
+            df = update_dataframe(df, patient, dice[idx], f"Initial {idx} dice")
+        print(f"\t-Initial Indices\n\t\tLiver Dice: {dice['liver']} - Tumor Dice: {dice['tumor']}")
 
-        results = ""
+        registration = ""
         for par_file in os.listdir(parameters_dir):
             transform = par_file.split(".")[0]
             transform_output = create_dir(patient_output, transform)
             par_file = os.path.join(parameters_dir, par_file)
 
-            # Register volumes.
-            print(f"\t-{transform} Transform.")
-            results = register_volumes(pair, transform_output, par_file, {"t0": results, "masks": masks})
+            # Start teh actual registration.
+            print(f"\t-{transform} Transform...")
+            props = {"init_transform": registration, "masks": masks}
+            results_path, registration = register_images(pair, img_type, transform_output, par_file, props)
 
             # In case of failure to finish the registration process.
-            if results == -1:
-                df = update_dataframe(df, patient, -1, transform)
+            if registration == -1:
+                df = update_dataframe(df, patient, -1, f"{transform} Failed")
                 break
 
-            # Apply transformation of moving volume to moving masks and calculate dice.
-            print(f"\t\t-Applying transform to moving masks.")
-            transformed_liver_mask = apply_transform(results, pair["moving"]["liver_mask"], transform_output)
-            liver_dice = calculate_dice((pair["fixed"]["liver_mask"], transformed_liver_mask))
-            df = update_dataframe(df, patient, liver_dice, f"{transform} (Liver)")
+            # Apply transformation of moving image to the other moving images and calculate dice.
+            print(f"\t\t-Applying transform...")
+            for img in pair["moving"]:
+                # No need to apply the transform to the registered image.
+                if img == img_type:
+                    continue
+                apply_transform(registration, pair["moving"][img], img, transform_output)
 
-            transformed_tumor_mask = apply_transform(results, pair["moving"]["tumor_mask"], transform_output)
-            tumor_dice = calculate_dice((pair["fixed"]["tumor_mask"], transformed_tumor_mask))
-            df = update_dataframe(df, patient, tumor_dice, f"{transform} (Tumor)")
-
-            print(f"\t\t-New Liver Dice: {liver_dice}.")
-            print(f"\t\t-New Tumor Dice: {tumor_dice}.")
+            # Calculate new dice on the transformed masks.
+            transformed_pair = {
+                "liver": f"{transform_output}/liver.nii.gz",
+                "tumor": f"{transform_output}/tumor.nii.gz"
+            }
+            dice = calculate_dice((pair["fixed"], transformed_pair))
+            for idx in dice:
+                df = update_dataframe(df, patient, dice[idx], f"Initial {idx} dice")
+            print(f"\t\t-New Indices\n\t\t\tLiver Dice: {dice['liver']} - Tumor Dice: {dice['tumor']}\n")
 
     dataframe_averages(df)
-    df.to_excel("output/exp_00.xlsx")
+    df.to_excel("output.xlsx")
 
 
 # Use this file as a script and run it.

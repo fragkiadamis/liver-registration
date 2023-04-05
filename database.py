@@ -1,7 +1,7 @@
 # Import necessary files and libraries.
 import os
 from subprocess import run
-from utils import setup_parser, validate_paths, create_output_structures
+from utils import setup_parser, validate_paths, create_output_structures, rename_instance
 
 
 # Return a list with the files of the directory.
@@ -19,34 +19,27 @@ def get_files(path):
 def fix_filenames(parent_dir, study):
     for filename in os.listdir(parent_dir):
         # Only the RT Structs need fixing.
-        if filename == f"{study}_volume.nii.gz":
+        if filename == "volume.nii.gz":
             return
 
         new_filename = filename.lower()
 
         # Make the RT structures filename consistent.
         if "foie" in new_filename or "liver" in new_filename:
-            new_filename = f"{study}_rtstruct_liver.nii.gz"
+            new_filename = "liver.nii.gz"
         elif "tumeur" in new_filename or "tumor" in new_filename:
-            new_filename = f"{study}_rtstruct_tumor.nii.gz"
+            new_filename = "tumor.nii.gz"
+        elif "necrosis" in new_filename:
+            new_filename = "necrosis.nii.gz"
 
         # If already exists, change name again...
         ascending = 1
         while os.path.exists(os.path.join(parent_dir, new_filename)):
             split_path = new_filename.split(".")
-            new_filename = f"{split_path[0]}_{ascending}.{split_path[1]}.{split_path[2]}"
+            new_filename = f"{split_path[0]}{ascending}.{split_path[1]}.{split_path[2]}"
             ascending += 1
 
         rename_instance(parent_dir, filename, new_filename)
-
-
-# Rename a directory
-def rename_instance(working_dir, old_name, new_name):
-    old_path = os.path.join(working_dir, old_name)
-    new_path = os.path.join(working_dir, new_name)
-    os.rename(old_path, new_path)
-
-    return new_path
 
 
 # Extract the nifty images from the DICOM series and the RT Structures as well as the transformation parameters from
@@ -71,31 +64,30 @@ def extract_from_dicom(study_input, study_output, study):
     for series in dicom_series:
         series_path = os.path.join(study_input, series)
         series_files = get_files(series_path)
-        volume_path = os.path.join(study_output, f"{study}_volume.nii.gz")
-        print(f"\t\t-Extract series: {series} ---> {volume_path}")
+        volume_path = os.path.join(study_output, "volume.nii.gz")
+        print(f"\t\t-Extract volume: {series} ---> {volume_path}")
         run(["clitkDicom2Image", *series_files, "-o", volume_path, "-t", "10"])
 
     # Extract the masks from the RT structures in nifty format. Use the extracted volume from above.
     for rt_structure in dicom_rtstr:
         rtstruct_path = os.path.join(study_input, rt_structure)
         rtstruct_file = get_files(rtstruct_path)[0]
-        rtst_basename = os.path.join(study_output, f"{study}_rtstruct")
-        print(f"\t\t-Extract RT struct: {rtstruct_path} ---> {rtst_basename}.nii.gz")
+        print(f"\t\t-Extract RT struct: {rtstruct_path} ---> {study_output}")
         run(
             ["clitkDicomRTStruct2Image", "-i", rtstruct_file, "-j", volume_path,
-             "-o", rtst_basename, "--niigz", "-t", "10"]
+             "-o", f"{study_output}/", "--niigz", "-t", "10"]
         )
         fix_filenames(study_output, study)
 
-    # TODO extract transformation parameters from dicom reg files.
+    # TODO: extract transformation parameters from dicom reg files (not in priority).
     for registration in dicom_reg:
-        print(f"\t\t-DICOM: {registration}")
+        print(f"\t\t-Extract transform: {registration}")
         continue
 
 
 def main():
     args = setup_parser("messages/database_parser.json")
-
+    # Set arguments.
     input_dir, output_dir = args.i, args.o
 
     # Validate input and output paths.
