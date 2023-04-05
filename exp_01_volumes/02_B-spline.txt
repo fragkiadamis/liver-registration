@@ -66,6 +66,7 @@
 (ResultImagePixelType "float")
 (ResultImageFormat "nii.gz")
 (ShowExactMetricValue "false")
+(ErodeMask "false")
 
 
 // ********** ImageSampler
