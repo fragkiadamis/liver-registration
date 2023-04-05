@@ -3,10 +3,10 @@
   "arguments": {
     "required": {
       "-i": "Path to the directory where the nifty database exists.",
-      "-o": "Path to the directory where the processed database is going to be saved.",
-      "-s": "The CT study that is going to be processed e.g -c SPECT-CT"
+      "-o": "Path to the directory where the processed database is going to be saved."
     },
     "optional": {
+      "-s": "The CT study that is going to be processed e.g -c SPECT-CT. Default is SPECT-CT"
     }
   }
 }
