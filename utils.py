@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 import sys
-from shutil import rmtree
+from shutil import rmtree, copytree
 import pandas as pd
 
 
@@ -43,11 +43,15 @@ def create_dir(output_path, dir_name):
 
 
 # Create the respective output structures 2 levels deep.
-def create_output_structures(input_dir, output_dir, depth):
+def create_output_structures(input_dir, output_dir, depth=2, identical=False):
     # Reset the directory.
     if os.path.exists(output_dir):
         rmtree(output_dir)
     os.mkdir(output_dir)
+
+    if identical:
+        copytree(input_dir, output_dir)
+        return
 
     # Create 1st level directories.
     for item in os.listdir(input_dir):

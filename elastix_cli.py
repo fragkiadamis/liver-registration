@@ -84,11 +84,13 @@ def get_pair_paths(patient_input, fixed_modality, moving_modality):
         "fixed": {
             "volume": os.path.join(patient_input, fixed_modality, "volume.nii.gz"),
             "liver": os.path.join(patient_input, fixed_modality, "liver.nii.gz"),
+            "liver_bb": os.path.join(patient_input, fixed_modality, "liver_bb.nii.gz"),
             "tumor": os.path.join(patient_input, fixed_modality, "tumor.nii.gz")
         },
         "moving": {
             "volume": os.path.join(patient_input, moving_modality, "volume.nii.gz"),
             "liver": os.path.join(patient_input, moving_modality, "liver.nii.gz"),
+            "liver_bb": os.path.join(patient_input, moving_modality, "liver_bb.nii.gz"),
             "tumor": os.path.join(patient_input, moving_modality, "tumor.nii.gz")
         }
     }

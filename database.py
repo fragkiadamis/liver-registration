@@ -1,6 +1,8 @@
 # Import necessary files and libraries.
 import os
 from subprocess import run
+import numpy as np
+import nibabel as nib
 from utils import setup_parser, validate_paths, create_output_structures, rename_instance
 
 
@@ -85,6 +87,57 @@ def extract_from_dicom(study_input, study_output, study):
         continue
 
 
+# Compare the two volumes two see if they are exact the same or similar.
+def compare_volumes(path_a, path_b):
+    volume_a, volume_b = nib.load(path_a).get_fdata(), nib.load(path_b).get_fdata()
+    volume_a, volume_b = np.array(volume_a, dtype=np.int32), np.array(volume_b, dtype=np.int32)
+    shape_a, shape_b = np.shape(volume_a), np.shape(volume_b)
+
+    result = 2
+    if shape_a == shape_b:
+        volume_sub = volume_a - volume_b
+        summation = np.sum(np.absolute(volume_sub))
+
+        if summation == 0:
+            result = -1
+        elif summation < 10000:
+            result = 0
+        elif summation < 100000:
+            result = 1
+
+    return result
+
+
+# Check for duplicate patients in the dataset. Exact duplicates will be removed automatically, very similar ones are
+# going to be stored in the duplicates directory and will be handled manually by the user. handled manually by the user.
+def check_for_duplicates(input_dir, patients):
+    for patient_a in patients:
+        print(f"-Checking for duplicates for {patient_a}")
+        patient_a_path = os.path.join(input_dir, patient_a)
+        for study in os.listdir(patient_a_path):
+            print(f"\t-Checking study {study}")
+            volume_a_path = os.path.join(patient_a_path, str(study), "volume.nii.gz")
+
+            # Remove self and check on the rest of the patients.
+            list_without_self = patients.copy()
+            list_without_self.remove(patient_a)
+            for patient_b in list_without_self:
+                print(f"\t\t-Against patient {patient_b}")
+                patient_b_path = os.path.join(input_dir, patient_b)
+                volume_b_path = os.path.join(patient_b_path, str(study), "volume.nii.gz")
+
+                print(f"\t\t\t-Comparing {volume_a_path} with {volume_b_path}")
+                result = compare_volumes(volume_a_path, volume_b_path)
+                if result == -1:
+                    print("\t\t\t-These images are exactly the same")
+                elif result == 0:
+                    print("\t\t\t-These images might be the same patient")
+                elif result == 1:
+                    print("\t\t\t-These images look alike")
+                elif result == 2:
+                    print("\t\t\t-These images seem OK!")
+
+
 def main():
     args = setup_parser("messages/database_parser.json")
     # Set arguments.
@@ -108,6 +161,9 @@ def main():
             study_input = os.path.join(patient_input, study)
             study_output = os.path.join(patient_output, study)
             extract_from_dicom(study_input, study_output, study)
+
+    # Make a check to handle any possible duplicate data.
+    check_for_duplicates(input_dir, os.listdir(input_dir))
 
 
 # Use this file as a script and run it.
