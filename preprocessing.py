@@ -1,11 +1,10 @@
 # Import necessary files and libraries.
 import os
-from shutil import copy, copytree
 import numpy as np
 from subprocess import run
 import SimpleITK as sITK
 import nibabel as nib
-from utils import setup_parser, validate_paths, delete_directory, create_output_structures
+from utils import setup_parser, validate_paths, create_output_structures
 
 
 # Traverse through the given dataset paths and create paired paths between the available modalities.
