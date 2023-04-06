@@ -85,6 +85,11 @@ def check_for_duplicates(input_dir, patients):
                     print("\t\t\t-These images seem OK!")
 
 
+# Perform a bias field correction for the MRIs.
+def bias_field_correction(input_mris, output_mris):
+    run(["clitkN4BiasFieldCorrection", "-i", input_mris["volume"], "-o", output_mris["volume"]])
+
+
 # Bring all the images of a patient into the same physical space of the chosen one.
 def resample(input_pairs, output_pairs, like_modality):
     # Get the image that gives the physical space reference.
@@ -103,12 +108,11 @@ def resample(input_pairs, output_pairs, like_modality):
     # This copying mechanism is only needed if the resampling process is the first that takes place on the original
     # nifty data. In any other case, the reference modality images will be available in the processed directory so
     # this mechanism should be commented out.
-    print(f"\t-Copying {like_modality} images...")
-    # Just copy the reference study into the processed nifty directory to have them available.
-    for image in input_pairs[like_modality]:
-        img_input, img_output = input_pairs[like_modality][image], output_pairs[like_modality][image]
-        print(f"\t\t-Image: {img_input} ---> {img_output}")
-        copy(img_input, img_output)
+    # print(f"\t-Copying {like_modality} images...")
+    # for image in input_pairs[like_modality]:
+    #     img_input, img_output = input_pairs[like_modality][image], output_pairs[like_modality][image]
+    #     print(f"\t\t-Image: {img_input} ---> {img_output}")
+    #     copy(img_input, img_output)
 
 
 # For all the available study pairs, adjust to minimum or predefined spacing for each axis (in mm).
@@ -165,7 +169,7 @@ def main():
     create_output_structures(input_dir, output_dir, depth=2)
 
     # Make a check to handle any possible duplicate data.
-    check_for_duplicates(input_dir, os.listdir(input_dir))
+    # check_for_duplicates(input_dir, os.listdir(input_dir))
 
     # Do the required preprocessing for each of the patients.
     for patient in os.listdir(input_dir):
@@ -175,12 +179,14 @@ def main():
         input_pair = get_pair_paths(patient_input, input_studies)
         output_pair = get_pair_paths(patient_output, output_studies)
 
-        print(f"\n-Adjust Spacing for patient: {patient}")
-        change_spacing(input_pair, output_pair)
-        print(f"\n-Resampling for patient: {patient}")
-        resample(input_pair, output_pair, rs_reference)
-        print(f"\n-Cropping for patient: {patient}")
-        crop(output_pair, output_pair)
+        # print(f"-Bias field correction for patient: {patient}")
+        # bias_field_correction(input_pair["MRI"], output_pair["MRI"])
+        # print(f"\n-Adjust Spacing for patient: {patient}")
+        # change_spacing(output_pair, output_pair)
+        # print(f"\n-Resampling for patient: {patient}")
+        # resample(output_pair, output_pair, rs_reference)
+        # print(f"\n-Cropping for patient: {patient}")
+        # crop(output_pair, output_pair)
 
 
 # Use this file as a script and run it.
