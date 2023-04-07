@@ -6,8 +6,8 @@
       "-o": "Path to the directory where the processed database is going to be saved."
     },
     "optional": {
-      "-std": "The CT study that is going to be processed e.g -c SPECT-CT. Default is SPECT-CT",
-      "-rsr": "The study volume which will give the physical space reference for the images of the other study to be resampled on. Default is CT"
+      "-std": "The CT study that is going to be processed e.g -c SPECT-CT. Default is SPECT-CT.",
+      "-rsr": "The study volume which will give the physical space reference for the images of the other study to be resampled on. Default is CT."
     }
   }
 }

@@ -118,7 +118,7 @@ def create_bounding_boxes(pair):
 
 
 def main():
-    args = setup_parser("messages/preprocessing_parser.json")
+    args = setup_parser("parser/preprocessing_parser.json")
     # Set required and optional arguments.
     input_dir, output_dir = args.i, args.o
     ct_study = args.std if args.std else "SPECT-CT"

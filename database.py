@@ -139,7 +139,7 @@ def check_for_duplicates(input_dir, patients):
 
 
 def main():
-    args = setup_parser("messages/database_parser.json")
+    args = setup_parser("parser/database_parser.json")
     # Set arguments.
     input_dir, output_dir = args.i, args.o
 
@@ -163,7 +163,7 @@ def main():
             extract_from_dicom(study_input, study_output, study)
 
     # Make a check to handle any possible duplicate data.
-    check_for_duplicates(input_dir, os.listdir(input_dir))
+    check_for_duplicates(output_dir, os.listdir(output_dir))
 
 
 # Use this file as a script and run it.
