@@ -105,7 +105,7 @@ def elastix_cli(pair, img_name, parameters, output, masks=None, t0=None):
 def main():
     args = setup_parser("parser/elastix_cli_parser.json")
     # Set required and optional arguments.
-    input_dir, output_dir, pipeline_json = args.i, args.o, args.p
+    input_dir, output_dir, pipelines_dir = args.i, args.o, args.p
     fixed_modality = args.fm if args.fm else "SPECT-CT"
     moving_modality = args.mm if args.fm else "ceMRI"
 
@@ -113,64 +113,62 @@ def main():
     validate_paths(input_dir, output_dir)
     create_output_structures(input_dir, output_dir, depth=1)
 
+    if not os.path.exists("results"):
+        os.mkdir("results")
     patients_list = os.listdir(input_dir)
-    df = open_data_frame(patients_list)
 
-    with open(pipeline_json, 'r') as pl:
-        pipeline = json.load(pl)
+    for pipeline_json in os.listdir(pipelines_dir):
+        json_path = f"{pipelines_dir}/{pipeline_json}"
+        with open(json_path, 'r') as pl:
+            pipeline = json.load(pl)
 
-    print(f"{ConsoleColors.HEADER}Pipeline:{ConsoleColors.END} {pipeline['name']}")
-    print(f"{ConsoleColors.HEADER}Description:{ConsoleColors.END} {pipeline['description']}")
+        df = open_data_frame(patients_list)
+        print(f"{ConsoleColors.HEADER}Pipeline:{ConsoleColors.END} {pipeline['name']}")
 
-    # Start registration for each patient in the dataset.
-    print(f"\n{ConsoleColors.HEADER}Registering {moving_modality} on {fixed_modality}{ConsoleColors.END}")
-    for patient in patients_list:
-        print(f"\n-Registering patient: {patient}")
-        patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
-        pair = get_pair_paths(patient_input, fixed_modality, moving_modality)
-        step_counter = 1
+        # Start registration for each patient in the dataset.
+        for patient in patients_list:
+            print(f"-Registering patient: {patient}")
+            patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
+            pair = get_pair_paths(patient_input, fixed_modality, moving_modality)
 
-        # Calculate the initial dice index and save the results.
-        dice = calculate_dice((pair["fixed"], pair["moving"]))
-        for idx in dice:
-            df = update_dataframe(df, patient, dice[idx], f"Initial {idx} dice")
-        print(f"\t{step_counter}) Initial Indices\n\t\tLiver Dice: {dice['liver']}\n\t\tTumor Dice: {dice['tumor']}")
-        step_counter += 1
-
-        # Create the output of the pipeline and execute its steps.
-        pipeline_output = create_dir(patient_output, pipeline["name"])
-        registration = None
-        for step in pipeline["registration_steps"]:
-            img_name, parameters_file, masks = step["img"], step["parameters"], step["masks"]
-            transform_name = (step["parameters"].split("/")[-1]).split(".")[0]
-            transform_output = create_dir(pipeline_output, transform_name)
-
-            # Perform the registration, which will return a transformation file. This transformation will be used in
-            # the next registration step of the pipeline as initial transform "t0".
-            print(f"\t{step_counter}) Transform: {transform_name} on {step['img']}")
-            registration = elastix_cli(pair, img_name, parameters_file, transform_output, masks, registration)
-            step_counter += 1
-
-            # In case of failure to finish the registration process.
-            if registration == -1:
-                df = update_dataframe(df, patient, -1, f"{transform_name} Failed")
-                break
-
-            # Apply the transformation on the moving masks.
-            mask_list = {"liver": pair["moving"]["liver"], "tumor": pair["moving"]["tumor"]}
-            print(f"\t{step_counter}) Apply transform to masks.")
-            transformed_masks = apply_transform(registration, mask_list, transform_output)
-            step_counter += 1
-
-            # Recalculate dice index.
-            dice = calculate_dice((pair["fixed"], transformed_masks))
+            # Calculate the initial dice index and save the results.
+            dice = calculate_dice((pair["fixed"], pair["moving"]))
             for idx in dice:
-                df = update_dataframe(df, patient, dice[idx], f"{transform_name} {idx} dice")
-            print(f"\t{step_counter}) New Indices\n\t\tLiver Dice: {dice['liver']}\n\t\tTumor Dice: {dice['tumor']}")
-            step_counter += 1
+                df = update_dataframe(df, patient, dice[idx], f"Initial {idx} dice")
+            print(f"\t-Initial Indices\n\t\tLiver Dice: {dice['liver']}\n\t\tTumor Dice: {dice['tumor']}")
 
-    dataframe_averages(df)
-    df.to_excel(f"output/{pipeline['name']}.xlsx")
+            # Create the output of the pipeline and execute its steps.
+            pipeline_output = create_dir(patient_output, pipeline["name"])
+            registration = None
+            for step in pipeline["registration_steps"]:
+                img_name, parameters_file = step["img"], step["parameters"]
+                masks, transform_name = step["masks"], step["name"]
+                transform_output = create_dir(pipeline_output, transform_name)
+
+                # Perform the registration, which will return a transformation file. This transformation will be used in
+                # the next registration step of the pipeline as initial transform "t0".
+                print(f"\t-Transform: {transform_name} on {step['img']}")
+                registration = elastix_cli(pair, img_name, parameters_file, transform_output, masks, registration)
+
+                # In case of failure to finish the registration process.
+                if registration == -1:
+                    df = update_dataframe(df, patient, -1, f"{transform_name} Failed")
+                    break
+
+                # Apply the transformation on the moving masks.
+                mask_list = {"liver": pair["moving"]["liver"], "tumor": pair["moving"]["tumor"]}
+                print(f"\t-Apply transform to masks.")
+                transformed_masks = apply_transform(registration, mask_list, transform_output)
+
+                # Recalculate dice index.
+                dice = calculate_dice((pair["fixed"], transformed_masks))
+                for idx in dice:
+                    df = update_dataframe(df, patient, dice[idx], f"{transform_name} {idx} dice")
+                print(f"\t-New Indices\n\t\tLiver Dice: {dice['liver']}\n\t\tTumor Dice: {dice['tumor']}")
+            print()
+
+        dataframe_averages(df)
+        df.to_excel(f"results/{pipeline['name']}.xlsx")
 
 
 # Use this file as a script and run it.

@@ -43,7 +43,7 @@ def resample(pair, like_modality):
     # Get the image that gives the physical space reference.
     like_img = pair[like_modality]["volume"]
     # Get the images of the study that are about to be resampled.
-    study = "CT" if like_modality == "ceMRI" else "MRI"
+    study = "CT" if like_modality == "MRI" else "MRI"
     images = pair[study]
 
     print(f"\t-Bring {study} in the physical space of {like_modality}")
@@ -95,6 +95,7 @@ def crop(pair):
 def create_bounding_boxes(pair):
     for study in pair:
         print(f"\t-Study: {study}")
+        volume = pair[study]["volume"]
         for mask in [pair[study]["liver"], pair[study]["tumor"]]:
             print(f"\t\t-Mask: {mask}")
             # Load the mask and convert it into a numpy array.
@@ -107,14 +108,30 @@ def create_bounding_boxes(pair):
             y_min, y_max = int(np.min(segmentation[1])), int(np.max(segmentation[1]))
             z_min, z_max = int(np.min(segmentation[2])), int(np.max(segmentation[2]))
 
-            # Create bounding box.
-            bounding_box = np.zeros(mask_data.shape)
-            bounding_box[x_min:x_max, y_min:y_max, z_min:z_max] = 1
+            # Create new image and the bounding box mask.
+            bounding_box_mask = np.zeros(mask_data.shape)
+            bounding_box_mask[x_min:x_max, y_min:y_max, z_min:z_max] = 1
 
             # Convert to nifty and save the image.
-            bounding_box = nib.Nifti1Image(bounding_box, affine=mask_nii.affine)
-            split = mask.split(".")
-            nib.save(bounding_box, f"{split[0]}_bb.{split[1]}")
+            bounding_box_mask = nib.Nifti1Image(bounding_box_mask, affine=mask_nii.affine)
+            split_mask = mask.split(".")
+            nib.save(bounding_box_mask, f"{split_mask[0]}_bb.{split_mask[1]}.gz")
+
+        print(f"\t\t-Volume: {volume}")
+        # Load the volume of the study and the liver bounding box mask.
+        volume_nii = nib.load(volume)
+        volume_data = np.array(volume_nii.get_fdata())
+
+        # Get the liver bounding box.
+        split = volume.split("volume")
+        liver_bb_mask = nib.load(f"{split[0]}liver_bb{split[1]}")
+        liver_bb_mask_data = np.array(liver_bb_mask.get_fdata())
+
+        # Create a new volume and keep only the intensities inside the liver's bounding box.
+        bounding_box_image = volume_data * liver_bb_mask_data
+        bounding_box_image = nib.Nifti1Image(bounding_box_image, affine=volume_nii.affine)
+        split_volume = volume.split(".")
+        nib.save(bounding_box_image, f"{split_volume[0]}_bb.{split_volume[1]}.gz")
 
 
 def main():
@@ -137,10 +154,10 @@ def main():
 
         pair = get_pair_paths(patient_dir, studies_dir)
 
-        print(f"\n-Bias field correction for patient: {patient}")
-        bias_field_correction(pair["MRI"]["volume"])
-        print(f"\n-Adjust Spacing for patient: {patient}")
-        change_spacing(pair)
+        # print(f"\n-Bias field correction for patient: {patient}")
+        # bias_field_correction(pair["MRI"]["volume"])
+        # print(f"\n-Adjust Spacing for patient: {patient}")
+        # change_spacing(pair)
         print(f"\n-Resampling for patient: {patient}")
         resample(pair, rs_reference)
         # print(f"\n-Cropping for patient: {patient}")

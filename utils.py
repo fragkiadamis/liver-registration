@@ -47,12 +47,12 @@ def create_output_structures(input_dir, output_dir, depth=2, identical=False):
     # Reset the directory.
     if os.path.exists(output_dir):
         rmtree(output_dir)
-    os.mkdir(output_dir)
 
     if identical:
         copytree(input_dir, output_dir)
         return
 
+    os.mkdir(output_dir)
     # Create 1st level directories.
     for item in os.listdir(input_dir):
         item_output = create_dir(output_dir, item)

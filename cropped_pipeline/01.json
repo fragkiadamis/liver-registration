@@ -1,0 +1,17 @@
+{
+  "name": "ctf_cropped_rigid_bspline",
+  "registration_steps": [
+    {
+      "img": "volume",
+      "name": "Rigid MI NN",
+      "masks": {"fixed": 0, "moving": 0},
+      "parameters": "parameters/Rigid_MI_BS.txt"
+    },
+    {
+      "img": "volume",
+      "name": "B-spline MI BS",
+      "masks": {"fixed": 0, "moving": 0},
+      "parameters": "parameters/B-spline_MI_BS.txt"
+    }
+  ]
+}
