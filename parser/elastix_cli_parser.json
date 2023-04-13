@@ -4,7 +4,7 @@
     "required": {
       "-i": "Path to the nifty files.",
       "-o": "Path to the registration output.",
-      "-p": "Pipelines directory. Specify the directory containing the pipelines."
+      "-p": "Pipeline json file. Specify the registration pipeline file."
     },
     "optional": {
       "-fm": "Specify fixed modality e.g. -fm SPECT-CT. Default is SPECT-CT.",
