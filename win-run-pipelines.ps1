@@ -1,1 +1,1 @@
-python.exe -i data/resampled_nifty -o data/elastix_cli_out -p pipelines/ground_truth.json
+python.exe -i data/resampled_nifty -o data/elastix_cli_out -p pipelines/liver_ground_truth_pl.json

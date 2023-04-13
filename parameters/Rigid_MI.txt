@@ -11,12 +11,12 @@
 (Registration "MultiResolutionRegistration")
 (FixedImagePyramid "FixedRecursiveImagePyramid")
 (MovingImagePyramid "MovingRecursiveImagePyramid")
-(Interpolator "NearestNeighborInterpolator")
-(ResampleInterpolator "FinalNearestNeighborInterpolator")
+(Interpolator "BSplineInterpolator")
+(ResampleInterpolator "FinalBSplineInterpolator")
 (Metric "AdvancedMattesMutualInformation")
 (Optimizer "AdaptiveStochasticGradientDescent")
 (Resampler "DefaultResampler")
-(Transform "TranslationTransform")
+(Transform "EulerTransform")
 
 
 // ********** Pyramid
@@ -30,7 +30,7 @@
 
 //(Scaler 500000.0)
 //(CenterOfRotation 128 128 90)
-(AutomaticTransformInitialization "true")
+//(AutomaticTransformInitialization "true")
 (HowToCombineTransforms "Compose")
 
 
@@ -76,6 +76,15 @@
 (ImageSampler "RandomCoordinate")
 (NumberOfSpatialSamples 10000)
 (NewSamplesEveryIteration "true")
+
+
+// ********** Interpolator and Resampler
+
+//Order of B-Spline interpolation used in each resolution level:
+(BSplineInterpolationOrder 1)
+
+//Order of B-Spline interpolation used for applying the final deformation:
+(FinalBSplineInterpolationOrder 3)
 
 //Default pixel value for pixels that come from outside the picture:
 (DefaultPixelValue 0)

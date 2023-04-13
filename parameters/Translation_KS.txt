@@ -13,10 +13,10 @@
 (MovingImagePyramid "MovingRecursiveImagePyramid")
 (Interpolator "NearestNeighborInterpolator")
 (ResampleInterpolator "FinalNearestNeighborInterpolator")
-(Metric "AdvancedMeanSquares")
+(Metric "AdvancedKappaStatistic")
 (Optimizer "AdaptiveStochasticGradientDescent")
 (Resampler "DefaultResampler")
-(Transform "EulerTransform")
+(Transform "TranslationTransform")
 
 
 // ********** Pyramid
@@ -30,7 +30,7 @@
 
 //(Scaler 500000.0)
 //(CenterOfRotation 128 128 90)
-(AutomaticTransformInitialization "true")
+//(AutomaticTransformInitialization "true")
 (HowToCombineTransforms "Compose")
 
 

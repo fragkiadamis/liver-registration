@@ -1,0 +1,19 @@
+{
+  "name": "liver_ground_truth_pl",
+  "studies": {"fixed": "SPECT-CT", "moving": "ceMRI"},
+  "registration_steps": [
+    {
+      "name": "Rigid KS",
+      "images": {"fixed": "liver", "moving": "liver"},
+      "masks": {"fixed": 0, "moving": 0},
+      "parameters": "parameters/Rigid_KS.txt"
+    },
+    {
+      "name": "B-spline MI",
+      "images": {"fixed": "liver", "moving": "liver"},
+      "masks": {"fixed": 0, "moving": 0},
+      "parameters": "parameters/B-spline_KS.txt"
+    }
+  ],
+  "evaluate_on": ["liver_bb", "liver", "tumor"]
+}
