@@ -113,8 +113,9 @@ def create_bounding_boxes(pair):
             bounding_box_mask[x_min:x_max, y_min:y_max, z_min:z_max] = 1
 
             # Convert to nifty and save the image.
-            bounding_box_mask = nib.Nifti1Image(bounding_box_mask, affine=mask_nii.affine)
             split_mask = mask.split(".")
+            bounding_box_mask = bounding_box_mask.astype(np.uint8)
+            bounding_box_mask = nib.Nifti1Image(bounding_box_mask, header=mask_nii.header, affine=mask_nii.affine)
             nib.save(bounding_box_mask, f"{split_mask[0]}_bb.{split_mask[1]}.gz")
 
         print(f"\t\t-Volume: {volume}")
@@ -128,9 +129,10 @@ def create_bounding_boxes(pair):
         liver_bb_mask_data = np.array(liver_bb_mask.get_fdata())
 
         # Create a new volume and keep only the intensities inside the liver's bounding box.
-        bounding_box_image = volume_data * liver_bb_mask_data
-        bounding_box_image = nib.Nifti1Image(bounding_box_image, affine=volume_nii.affine)
         split_volume = volume.split(".")
+        bounding_box_image = volume_data * liver_bb_mask_data
+        bounding_box_image = bounding_box_image.astype(np.ushort)
+        bounding_box_image = nib.Nifti1Image(bounding_box_image, header=volume_nii.header, affine=volume_nii.affine)
         nib.save(bounding_box_image, f"{split_volume[0]}_bb.{split_volume[1]}.gz")
 
 
@@ -158,12 +160,13 @@ def main():
         # bias_field_correction(pair["MRI"]["volume"])
         # print(f"\n-Adjust Spacing for patient: {patient}")
         # change_spacing(pair)
-        print(f"\n-Resampling for patient: {patient}")
-        resample(pair, rs_reference)
+        # print(f"\n-Resampling for patient: {patient}")
+        # resample(pair, rs_reference)
         # print(f"\n-Cropping for patient: {patient}")
         # crop(pair)
         print(f"\n-Create boundary boxes for patient: {patient}")
         create_bounding_boxes(pair)
+        break
 
 
 # Use this file as a script and run it.
