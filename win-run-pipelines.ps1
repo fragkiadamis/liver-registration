@@ -1,0 +1,1 @@
+python.exe -i data/resampled_nifty -o data/elastix_cli_out -p pipelines/ground_truth.json
