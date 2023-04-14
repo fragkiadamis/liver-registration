@@ -6,7 +6,7 @@ from subprocess import check_output, CalledProcessError
 from utils import setup_parser, validate_paths, \
     create_output_structures, create_dir, \
     update_dataframe, open_data_frame, dataframe_stats, \
-    rename_instance, ConsoleColors, save_dfs
+    rename_instance, ConsoleColors, save_dfs, delete_dir
 
 
 def get_mask_paths(patient, studies, masks):
@@ -109,15 +109,15 @@ def main():
 
     # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
-    create_output_structures(input_dir, output_dir, depth=1)
-
-    if not os.path.exists("results"):
-        os.mkdir("results")
-    patients_list = os.listdir(input_dir)
+    if not os.path.exists(output_dir):
+        create_output_structures(input_dir, output_dir, depth=1)
 
     with open(pipeline_file, 'r') as pl:
         pipeline = json.load(pl)
 
+    if not os.path.exists("results"):
+        os.mkdir("results")
+    patients_list = os.listdir(input_dir)
     results_path = f"results/{pipeline['name']}.xlsx"
 
     dfs = {}
@@ -135,11 +135,14 @@ def main():
         dice = calculate_dice(evaluation_masks)
         print("\t-Initial dice index.")
         for idx in dice:
-            dfs[idx] = update_dataframe(dfs[idx], patient, dice[idx], f"Initial dice")
+            dfs[idx] = update_dataframe(dfs[idx], patient, dice[idx], "Initial dice")
             print(f"\t\t-{idx}: {ConsoleColors.UNDERLINE}{dice[idx]}.{ConsoleColors.END}")
 
-        # Create the output of the pipeline and execute its steps.
-        pipeline_output = create_dir(patient_output, pipeline["name"])
+        # Delete pipeline directory if it already exists and create a new one.
+        pipeline_output = os.path.join(patient_output, pipeline["name"])
+        delete_dir(pipeline_output)
+        create_dir(patient_output, pipeline["name"])
+
         registration = None
         for step in pipeline["registration_steps"]:
             images = get_image_paths(patient_input, pipeline["studies"], step["images"])

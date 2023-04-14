@@ -4,7 +4,6 @@ import os
 import sys
 from shutil import rmtree, copytree
 import pandas as pd
-import xlsxwriter
 
 
 # Setup the parser and the correct argument messages loaded from the respective json file.
@@ -43,11 +42,16 @@ def create_dir(output_path, dir_name):
     return dir_output_path
 
 
+# Delete the directory if it exists.
+def delete_dir(directory):
+    if os.path.exists(directory):
+        rmtree(directory)
+
+
 # Create the respective output structures 2 levels deep.
 def create_output_structures(input_dir, output_dir, depth=2, identical=False):
-    # Reset the directory.
-    if os.path.exists(output_dir):
-        rmtree(output_dir)
+    # Reset the output directory.
+    delete_dir(output_dir)
 
     if identical:
         copytree(input_dir, output_dir)
