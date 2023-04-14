@@ -40,6 +40,8 @@ Advanced Registration)
 3) Try extracting the boxes with only the contours or the outlines as 1 (my idea). Then try a number of the experiments
 described above to make a comparison and find out if this method actually helps the registration of the bounding box.
 
+4) Try the experiments with good results but this time with isotropic spacing for the modalities.
+
 FINALLY MALAKA, MAKE A PRESENTATION WITH VISUAL CONTENT...
 
 Start by refactoring the codebase to handle more elastically (A ΧΑ ΚΑΛΟ Ε;;;) the experiments. Define everything in the

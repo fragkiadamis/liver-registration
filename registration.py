@@ -5,8 +5,8 @@ import os
 from subprocess import check_output, CalledProcessError
 from utils import setup_parser, validate_paths, \
     create_output_structures, create_dir, \
-    update_dataframe, open_data_frame, dataframe_averages,\
-    rename_instance, ConsoleColors
+    update_dataframe, open_data_frame, dataframe_stats, \
+    rename_instance, ConsoleColors, save_dfs
 
 
 def get_mask_paths(patient, studies, masks):
@@ -118,9 +118,13 @@ def main():
     with open(pipeline_file, 'r') as pl:
         pipeline = json.load(pl)
 
-    df = open_data_frame(patients_list)
-    print(f"{ConsoleColors.HEADER}Pipeline: {pipeline['name']}{ConsoleColors.END}")
+    results_path = f"results/{pipeline['name']}.xlsx"
 
+    dfs = {}
+    for item in pipeline["evaluate_on"]:
+        dfs[item] = open_data_frame(patients_list)
+
+    print(f"{ConsoleColors.HEADER}Pipeline: {pipeline['name']}{ConsoleColors.END}")
     # Start registration for each patient in the dataset.
     for patient in patients_list:
         print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}{ConsoleColors.END}")
@@ -131,7 +135,7 @@ def main():
         dice = calculate_dice(evaluation_masks)
         print("\t-Initial dice index.")
         for idx in dice:
-            df = update_dataframe(df, patient, dice[idx], f"Initial {idx} dice")
+            dfs[idx] = update_dataframe(dfs[idx], patient, dice[idx], f"Initial dice")
             print(f"\t\t-{idx}: {ConsoleColors.UNDERLINE}{dice[idx]}.{ConsoleColors.END}")
 
         # Create the output of the pipeline and execute its steps.
@@ -150,7 +154,10 @@ def main():
 
             # In case of failure to finish the registration process.
             if registration == -1:
-                df = update_dataframe(df, patient, -1, f"{transform_name} Failed")
+                # Save failure as -1 to the respective transform, save data and continue to the next patient.
+                for df in dfs:
+                    dfs[df] = update_dataframe(dfs[df], patient, -1, f"{transform_name}")
+                save_dfs(dfs, results_path)
                 break
 
             # Apply the transformation on the moving masks.
@@ -161,13 +168,16 @@ def main():
             dice = calculate_dice(transformed_masks)
             print("\t-New dice index.")
             for idx in dice:
-                df = update_dataframe(df, patient, dice[idx], f"{transform_name} {idx} dice")
+                dfs[idx] = update_dataframe(dfs[idx], patient, dice[idx], f"{transform_name}")
                 print(f"\t\t-{idx}: {ConsoleColors.UNDERLINE}{dice[idx]}.{ConsoleColors.END}")
 
-            print()
+            # Save step's results.
+            save_dfs(dfs, results_path)
+        print()
 
-    dataframe_averages(df)
-    df.to_excel(f"results/{pipeline['name']}.xlsx")
+    # Get statistics for the dataframes and save.
+    dataframe_stats(dfs)
+    save_dfs(dfs, results_path)
 
 
 # Use this file as a script and run it.
