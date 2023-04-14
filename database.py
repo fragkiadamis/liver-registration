@@ -140,7 +140,6 @@ def check_for_duplicates(input_dir, patients):
 
 def main():
     args = setup_parser("parser/database_parser.json")
-    # Set arguments.
     input_dir, output_dir = args.i, args.o
 
     # Validate input and output paths.

@@ -1,5 +1,5 @@
 # Import necessary files and libraries.
-import copy
+from copy import deepcopy
 import json
 import os
 from subprocess import check_output, CalledProcessError
@@ -60,24 +60,24 @@ def change_transform_file(file_path, prop, values):
 
 
 # Apply the transformation parameters to the masks.
-def apply_transform(transform_file, evaluation_masks, transformation_dir):
-    # Change the bspline interpolation order from 3 to 0 to apply the transformation to the binary mask.
-    change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "3", "new": "0"})
+def apply_transform(transform_file, images, transformation_dir):
+    for img in images:
+        if img != "volume":
+            # Change the bspline interpolation order from 3 to 0 to apply the transformation to the binary mask.
+            change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "3", "new": "0"})
 
-    masks = copy.deepcopy(evaluation_masks)
-    for mask in masks:
         # Apply transformation to the mask.
-        check_output(["transformix", "-in", masks[mask]["moving"], "-out", transformation_dir, "-tp", transform_file])
-        masks[mask]["moving"] = rename_instance(transformation_dir, "result.nii.gz", f"{mask}_result.nii.gz")
+        check_output(["transformix", "-in", images[img]["moving"], "-out", transformation_dir, "-tp", transform_file])
+        images[img]["moving"] = rename_instance(transformation_dir, "result.nii.gz", f"{img}_result.nii.gz")
 
     # Reset bspline interpolation order to 3.
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "0", "new": "3"})
 
-    return masks
+    return images
 
 
 # Register the input pair using elastix and the defined parameters file.
-def elastix_cli(images, parameters, output, masks=None, t0=None):
+def elastix_cli(images, masks, parameters, output, t0=None):
     # Create elastix argument list.
     elx_arguments = ["-f", images["fixed"], "-m", images["moving"], "-out", output, "-p", parameters]
 
@@ -85,7 +85,7 @@ def elastix_cli(images, parameters, output, masks=None, t0=None):
     if t0:
         elx_arguments.extend(["-t0", t0])
 
-    # Use masks if it is defined.
+    # Use the defined masks.
     if masks:
         if masks["fixed"]:
             elx_arguments.extend(["-fMask", masks["fixed"]])
@@ -104,7 +104,6 @@ def elastix_cli(images, parameters, output, masks=None, t0=None):
 
 def main():
     args = setup_parser("parser/elastix_cli_parser.json")
-    # Set required and optional arguments.
     input_dir, output_dir, pipeline_file = args.i, args.o, args.p
 
     # Validate paths, create structure and open the dataframe.
@@ -112,31 +111,27 @@ def main():
     if not os.path.exists(output_dir):
         create_output_structures(input_dir, output_dir, depth=1)
 
-    with open(pipeline_file, 'r') as pl:
-        pipeline = json.load(pl)
-
-    if not os.path.exists("results"):
-        os.mkdir("results")
-    patients_list = os.listdir(input_dir)
-    results_path = f"results/{pipeline['name']}.xlsx"
-
-    dfs = {}
-    for item in pipeline["evaluate_on"]:
-        dfs[item] = open_data_frame(patients_list)
+    # Open file and create the pipeline dictionary from json.
+    pl = open(pipeline_file)
+    pipeline = json.loads(pl.read())
+    pl.close()
 
     print(f"{ConsoleColors.HEADER}Pipeline: {pipeline['name']}{ConsoleColors.END}")
+
+    # Create the results dataframe.
+    patients_list = os.listdir(input_dir)
+    results_path = f"{create_dir('.', 'results')}/{pipeline['name']}.xlsx"
+    dfs = open_data_frame(patients_list, pipeline["evaluate_on"], results_path)
+
     # Start registration for each patient in the dataset.
     for patient in patients_list:
-        print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}{ConsoleColors.END}")
+        print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}.{ConsoleColors.END}")
         patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
         evaluation_masks = get_mask_paths(patient_input, pipeline["studies"], pipeline["evaluate_on"])
 
         # Calculate the initial dice index and save the results.
         dice = calculate_dice(evaluation_masks)
-        print("\t-Initial dice index.")
-        for idx in dice:
-            dfs[idx] = update_dataframe(dfs[idx], patient, dice[idx], "Initial dice")
-            print(f"\t\t-{idx}: {ConsoleColors.UNDERLINE}{dice[idx]}.{ConsoleColors.END}")
+        dfs = update_dataframe(dfs, patient, dice, "Initial dice", results_path)
 
         # Delete pipeline directory if it already exists and create a new one.
         pipeline_output = os.path.join(patient_output, pipeline["name"])
@@ -145,37 +140,40 @@ def main():
 
         registration = None
         for step in pipeline["registration_steps"]:
+            # Get transform's properties.
             images = get_image_paths(patient_input, pipeline["studies"], step["images"])
-            parameters_file = step["parameters"]
-            masks, transform_name = step["masks"], step["name"]
+            masks = step["masks"] if "masks" in step else None
+            parameters_file, transform_name = step["parameters"], step["name"]
+
+            # Create current transform's output.
             transform_output = create_dir(pipeline_output, transform_name)
 
             # Perform the registration, which will return a transformation file. This transformation will be used in
             # the next registration step of the pipeline as initial transform "t0".
-            print(f"\t-Transform: {transform_name} on {step['images']['moving']}")
-            registration = elastix_cli(images, parameters_file, transform_output, masks, registration)
+            print(f"\t-Transform: {transform_name} on {step['images']['moving']}.")
+            registration = elastix_cli(images, masks, parameters_file, transform_output, registration)
 
-            # In case of failure to finish the registration process.
+            # In case of failure to finish the registration process, continue to the next patient.
             if registration == -1:
-                # Save failure as -1 to the respective transform, save data and continue to the next patient.
-                for df in dfs:
-                    dfs[df] = update_dataframe(dfs[df], patient, -1, f"{transform_name}")
-                save_dfs(dfs, results_path)
                 break
 
-            # Apply the transformation on the moving masks.
+            # If it's defined in the pipeline, apply the transform to the volume too. This is necessary for the cases
+            # where all the registrations are done only between masks and no volumes.
+            image_set = deepcopy(evaluation_masks)
+            if pipeline["apply_on_volume"]:
+                image_set["volume"] = {
+                    "fixed": os.path.join(patient_input, pipeline["studies"]["fixed"], "volume.nii.gz"),
+                    "moving": os.path.join(patient_input, pipeline["studies"]["moving"], "volume.nii.gz")
+                }
+
+            # Apply the transformation on the moving images.
             print(f"\t-Apply transform to masks.")
-            transformed_masks = apply_transform(registration, evaluation_masks, transform_output)
+            transformed = apply_transform(registration, image_set, transform_output)
 
-            # Recalculate dice index.
+            # Recalculate dice index only to transformed masks.
+            transformed_masks = {x: transformed[x] for x in transformed if x != "volume"}
             dice = calculate_dice(transformed_masks)
-            print("\t-New dice index.")
-            for idx in dice:
-                dfs[idx] = update_dataframe(dfs[idx], patient, dice[idx], f"{transform_name}")
-                print(f"\t\t-{idx}: {ConsoleColors.UNDERLINE}{dice[idx]}.{ConsoleColors.END}")
-
-            # Save step's results.
-            save_dfs(dfs, results_path)
+            dfs = update_dataframe(dfs, patient, dice, f"{transform_name}", results_path)
         print()
 
     # Get statistics for the dataframes and save.
