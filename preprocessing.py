@@ -157,12 +157,12 @@ def main():
 
         # print(f"\n-Bias field correction for patient: {patient}")
         # bias_field_correction(pair["MRI"]["volume"])
-        # print(f"\n-Adjust Spacing for patient: {patient}")
-        # change_spacing(pair)
-        print(f"\n-Resampling for patient: {patient}")
-        resample(pair, rs_reference)
+        print(f"\n-Adjust Spacing for patient: {patient}")
+        change_spacing(pair, (1, 1, 1))
         # print(f"\n-Cropping for patient: {patient}")
         # crop(pair)
+        print(f"\n-Resampling for patient: {patient}")
+        resample(pair, rs_reference)
         print(f"\n-Create boundary boxes for patient: {patient}")
         create_bounding_boxes(pair)
 

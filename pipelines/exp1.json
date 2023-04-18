@@ -1,0 +1,18 @@
+{
+  "name": "exp1",
+  "studies": {"fixed": "SPECT-CT", "moving": "ceMRI"},
+  "registration_steps": [
+    {
+      "name": "01 Rigid MI",
+      "images": {"fixed": "volume.nii.gz", "moving": "volume.nii.gz"},
+      "parameters": "parameters/Rigid_MI.txt"
+    },
+    {
+      "name": "02 B-spline MI",
+      "images": {"fixed": "volume.nii.gz", "moving": "volume.nii.gz"},
+      "parameters": "parameters/B-spline_MI.txt"
+    }
+  ],
+  "evaluate_on": ["liver.nii.gz", "tumor.nii.gz"],
+  "apply_on_volume": 0
+}

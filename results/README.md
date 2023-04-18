@@ -1,12 +1,11 @@
-# Experiments Breakdown.
+# Pipeline & Experiments.
 
-| Exp | Register | Crop | Transformations     | Fixed    | Moving | Masks | Sampling | Metric | Mean   |
-|-----|----------|------|---------------------|----------|--------|-------|----------|--------|--------|
-| 01  | Volumes  | No   | Rigid ---> B-spline | SPECT-CT | ceMRI  | No    | Random   | MI     | 53.95% |
-| 02  | Volumes  | Yes  | Rigid ---> B-spline | SPECT-CT | ceMRI  | No    | Random   | MI     | 89.84% |
-| 03  | Volumes  | Yes  | Rigid ---> B-spline | SPECT-CT | ceMRI  | Yes   | Random   | MI     | 78.93% |
-| 04  | Masks    | No   | Rigid ---> B-spline | SPECT-CT | ceMRI  | -     | Random   | MI     | 78.55% |
-
-For experiment 02, I first changed the spacing of the voxels to each axis with the smallest between the respective CT 
-and MRI. After, each study was cropped based on the boundaries of the liver mask. Intensity based registration was 
-applied on the cropped volumes. The pipeline was Rigid MI and Bspline MI.
+| Pipeline  |  Fixed   | Moving | Isotropic <br> Spacing |               Global                | Global <br> Masks |           Local            |                     Local <br> Masks                     | Final Mean |
+|:---------:|:--------:|:------:|:----------------------:|:-----------------------------------:|:-----------------:|:--------------------------:|:--------------------------------------------------------:|:----------:|
+| exp1.json | SPECT-CT | ceMRI  |        &cross;         |       Rigid MI <br> (Volumes)       |      &cross;      | B-spline MI <br> (Volumes) |                         &cross;                          |   63.68%   |
+| exp2.json | SPECT-CT | ceMRI  |        &cross;         |   Rigid KS <br> (Bounding boxes)    |      &cross;      | B-spline MI <br> (Volumes) | <ul><li>Fixed liver_bb</li><li>Moving liver_bb</li></ul> |   87.67%   |
+| exp3.json | SPECT-CT | ceMRI  |        &cross;         |        Rigid KS <br> (Masks)        |      &cross;      | B-spline MI <br> (Volumes) | <ul><li>Fixed liver_bb</li><li>Moving liver_bb</li></ul> |   89.35%   |
+| exp4.json | SPECT-CT | ceMRI  |        &cross;         | Rigid KS <br> (Mask - Bounding Box) |      &cross;      | B-spline MI <br> (Volumes) |    <ul><li>Fixed liver</li><li>Moving liver</li></ul>    |   83.54%   |
+| exp5.json | SPECT-CT | ceMRI  |        &cross;         |        Rigid KS <br> (Masks)        |      &cross;      |  B-spline KS <br> (Masks)  |                         &cross;                          |   95.81%   |
+| exp6.json | SPECT-CT | ceMRI  |        &check;         |        Rigid KS <br> (Masks)        |      &cross;      |  B-spline KS <br> (Masks)  | <ul><li>Fixed liver_bb</li><li>Moving liver_bb</li></ul> |   96.41%   |
+| exp7.json | SPECT-CT | ceMRI  |        &check;         |        Rigid KS <br> (Masks)        |      &cross;      | B-spline KS <br> (Volumes) | <ul><li>Fixed liver_bb</li><li>Moving liver_bb</li></ul> |   89.60%   |

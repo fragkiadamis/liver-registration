@@ -24,7 +24,7 @@ def get_mask_paths(patient, studies, masks):
 def get_image_paths(patient_input, studies, images):
     return {
         "fixed": os.path.join(patient_input, studies["fixed"], images["fixed"]),
-        "moving": os.path.join(patient_input, studies["moving"], images["moving"])
+        "moving": os.path.join(patient_input, studies["moving"], images["moving"]) if images["moving"] else ""
     }
 
 
@@ -142,7 +142,8 @@ def main():
         for step in pipeline["registration_steps"]:
             # Get transform's properties.
             images = get_image_paths(patient_input, pipeline["studies"], step["images"])
-            masks = step["masks"] if "masks" in step else None
+            masks = get_image_paths(patient_input, pipeline["studies"], step["masks"]) if "masks" in step else None
+
             parameters_file, transform_name = step["parameters"], step["name"]
 
             # Create current transform's output.
