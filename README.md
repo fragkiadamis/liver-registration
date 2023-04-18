@@ -13,7 +13,9 @@ for 90Y particles. A pre-treatment dosimetry is performed by acquiring a single-
 prescribe. Once calculated, the appropriate amount of 90Y microspheres is injected into the patient and a positron 
 emission tomography (PET/CT) scan is acquired to ensure the proper <sup>90</sup>Y distribution and calculate 
 <sup>90</sup>Y post-treatment dosimetry. To be able to calculate proper dosimetry, it is necessary to perform 
-registrations beforehand.
+registrations beforehand. The objective of this application is to:
+- A first registration between the baseline ceMRI and SPECT/CT images (pre-treatment dosimetry),
+- A second registration between the baseline ceMRI and the PET/CT images (post-treatment dosimetry). 
 
 ## Database Creation
 The database of this application is consisted by files in DICOM format. In order to be able to perform the necessary 
@@ -58,7 +60,7 @@ nifty data will be available at the defined directory. The extracted data have a
 data but one layer less. In this example, the data will have the following structure.
 
 ```commandline
-├── data
+|── data
 │   ├── dicom
 │   ├── nifti
 │   │   ├── patient_001
@@ -89,3 +91,15 @@ segmentation of the necrotic tissue. Either, the application uses only the files
 specified in the above structure. Of course with the correct file renaming or the refactoring of the code, each user 
 can utilise different data.
 
+## Preprocessing
+In the preprocessing.py file several functions are defined that are necessary to be performed beforehand the 
+registration. The user can decide which preprocessing functions is going to use by commenting in or out the function 
+invocations from the main function of the file. The order of the invocation also has a role for the final results, 
+so each user can adjust it.
+
+The file is continuously growing for now including more and more functions that are tried out during the research 
+process. After the desirable adjustments in the main function of the file, the file can be executed with the command 
+```python -i data/nifty -o data/nifty_rs -std SPECT-CT -rsr CT```. The argument ```-i``` defines the input directory 
+and the argument ```-o``` the output directory. The ```-std``` defines the CT study that we are going to use in the 
+current session (SPECT-CT or PET-CT) and finally the ```-rsr``` defines the study that is going to be the reference 
+for the resampling function (CT or MRI).
