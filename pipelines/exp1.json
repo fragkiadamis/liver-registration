@@ -5,12 +5,14 @@
     {
       "name": "01 Rigid MI",
       "images": {"fixed": "volume.nii.gz", "moving": "volume.nii.gz"},
-      "parameters": "parameters/Rigid_MI.txt"
+      "parameters": "parameters/Rigid_MI.txt",
+      "def_field": 0
     },
     {
       "name": "02 B-spline MI",
       "images": {"fixed": "volume.nii.gz", "moving": "volume.nii.gz"},
-      "parameters": "parameters/B-spline_MI.txt"
+      "parameters": "parameters/B-spline_MI.txt",
+      "def_field": 0
     }
   ],
   "evaluate_on": ["liver.nii.gz", "tumor.nii.gz"],

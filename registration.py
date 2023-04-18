@@ -60,17 +60,22 @@ def change_transform_file(file_path, prop, values):
 
 
 # Apply the transformation parameters to the masks.
-def apply_transform(transform_file, images, transformation_dir):
+def apply_transform(transform_file, images, transformation_dir, def_field):
     for img in images:
         if img != "volume":
             # Change the bspline interpolation order from 3 to 0 to apply the transformation to the binary mask.
             change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "3", "new": "0"})
 
-        # Apply transformation to the mask.
-        check_output(["transformix", "-in", images[img]["moving"], "-out", transformation_dir, "-tp", transform_file])
+        # Set the transformix arguments.
+        trx_args = ["-in", images[img]["moving"], "-out", transformation_dir, "-tp", transform_file]
+        if def_field:
+            trx_args.extend(["-def", "all"])
+
+        # Apply transformation.
+        check_output(["transformix", *trx_args])
         images[img]["moving"] = rename_instance(transformation_dir, "result.nii.gz", f"{img}_result.nii.gz")
 
-    # Reset bspline interpolation order to 3.
+    # Reset bspline interpolation order to 3. If it's not changed, nothing is going to happen.
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "0", "new": "3"})
 
     return images
@@ -169,7 +174,7 @@ def main():
 
             # Apply the transformation on the moving images.
             print(f"\t-Apply transform to masks.")
-            transformed = apply_transform(registration, image_set, transform_output)
+            transformed = apply_transform(registration, image_set, transform_output, step["def_field"])
 
             # Recalculate dice index only to transformed masks.
             transformed_masks = {x: transformed[x] for x in transformed if x != "volume"}
