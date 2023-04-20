@@ -13,8 +13,8 @@ def get_mask_paths(patient, studies, masks):
     mask_pair = {}
     for mask in masks:
         mask_pair[mask] = {
-            "fixed": os.path.join(patient, studies["fixed"], mask),
-            "moving": os.path.join(patient, studies["moving"], mask),
+            "fixed": os.path.join(patient, studies["fixed"], mask, ".nii.gz"),
+            "moving": os.path.join(patient, studies["moving"], mask, ".nii.gz")
         }
 
     return mask_pair
@@ -23,8 +23,9 @@ def get_mask_paths(patient, studies, masks):
 # Return into a dictionary the fixed and moving paths
 def get_image_paths(patient_input, studies, images):
     return {
-        "fixed": os.path.join(patient_input, studies["fixed"], images["fixed"]),
-        "moving": os.path.join(patient_input, studies["moving"], images["moving"]) if images["moving"] else ""
+        "fixed": os.path.join(patient_input, studies["fixed"], images["fixed"], ".nii.gz"),
+        "moving": os.path.join(patient_input, studies["moving"], images["moving"], ".nii.gz")
+        if "moving" in images else ""
     }
 
 

@@ -5,46 +5,9 @@ Preprocessing shit that I might want to try before the volume registrations...
 
 2) Later check also about histogram preprocessing for the images.
 
-WHAT I SHOULD PRESENT ON WEDNESDAY
-
-The initial transforms...
-*** FIRST OF ALL MALAKA; TRANSLATION ON THE CENTER OF GRAVITY (then the following experiments...) ***
-1) Worst case scenario - Boundary box to boundary box registration with Kappa metric accuracy (Rigid)
-2) Alternative case scenario - Ground truth to boundary box registration with Kappa metric accuracy (Rigid)
-3) Best case scenario - Ground truth to ground truth registration with Kappa metric accuracy (Rigid)
-
-The registration results of the above process on the masks generated from Felix' network, are going to lie somewhere
-between the worst and the best case scenario (logically). The final registration process will most likely be with the
-CT mask generated from the network and the MRI mask delineated by Romain.
-
-Follow up transforms...
-1) For each one of the scenarios above, do a bspline transform.
-   - Do the transform on the masks (This might not make any sense with the boundary boxes)
-   - Do the transform on the volumes
-   - Compare results... what will be more useful in our case?
-
-To do the experiment with the network CT generated masks, I am going to need all the dataset to train the model on the
-CT images and extract the masks. Ask Romain for the volumes at least if the delineation process is not finished yet
-(but evaluate the results on what (???) if Romain is not done with the delineation...).
-
-Furthermore... do the following experiments as they were discussed thoroughly between me Benoit and Felix...
-
-1) Translation transform with the boundary boxes (Benoit' idea).
-   - Follow up translation with the volumes.
-   - Follow up bspline with the volumes.
-
-2) Try translating the boundary boxes using only the corners (Felix' idea). Maybe I'll need to code myself the
+3) Try translating the boundary boxes using only the corners (Felix' idea). Maybe I'll need to code myself the
 registration process here... Check if I can do it with the feature points registration in elastix manual (Section 6 -
 Advanced Registration)
 
-3) Try extracting the boxes with only the contours or the outlines as 1 (my idea). Then try a number of the experiments
+4) Try extracting the boxes with only the contours or the outlines as 1 (my idea). Then try a number of the experiments
 described above to make a comparison and find out if this method actually helps the registration of the bounding box.
-
-4) Try the experiments with good results but this time with isotropic spacing for the modalities.
-
-FINALLY MALAKA, MAKE A PRESENTATION WITH VISUAL CONTENT...
-
-Start by refactoring the codebase to handle more elastically (A ΧΑ ΚΑΛΟ Ε;;;) the experiments. Define everything in the
-pipeline config file. Ideally the registration.py file should not ever be touched again after this refactoring.
-Furthermore, execute on pipeline for each registration.py run. For multiple pipelines, make a bash script to run the
-registration each time with a different pipeline.
