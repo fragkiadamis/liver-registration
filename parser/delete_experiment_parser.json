@@ -1,0 +1,11 @@
+{
+  "description": "Delete the data of the specified experiments.",
+  "arguments": {
+    "required": {
+      "-i": "The directory containing all the experiments.",
+      "-exp": "The names of the experiments."
+    },
+    "optional": {
+    }
+  }
+}

@@ -7,6 +7,7 @@ ENV/
 
 # local data
 data
+results/*
 
 # Installer logs
 pip-log.txt
@@ -49,3 +50,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+!.gitignore
+results/README.md
