@@ -1,9 +1,11 @@
 # Import necessary files and libraries.
 import os
-import numpy as np
 from subprocess import run
+
 import SimpleITK as sITK
 import nibabel as nib
+import numpy as np
+
 from utils import setup_parser, validate_paths, create_output_structures
 
 

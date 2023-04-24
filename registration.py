@@ -1,12 +1,12 @@
 # Import necessary files and libraries.
-from copy import deepcopy
 import json
 import os
+from copy import deepcopy
 from subprocess import check_output, CalledProcessError
+
+from metrics import open_data_frame, update_dataframe_values, dataframe_stats, calculate_metrics
 from utils import setup_parser, validate_paths, \
-    create_output_structures, create_dir, \
-    update_dataframe, open_data_frame, dataframe_stats, \
-    rename_instance, ConsoleColors, save_dfs, delete_dir
+    create_output_structures, create_dir, rename_instance, delete_dir, ConsoleColors
 
 
 def get_mask_paths(patient, studies, masks):
@@ -27,16 +27,6 @@ def get_image_paths(patient_input, studies, images):
         "moving": os.path.join(patient_input, studies["moving"], f"{images['moving']}.nii.gz")
         if "moving" in images else ""
     }
-
-
-# Calculate the dice index between 2 RT structures
-def calculate_dice(masks):
-    dice_indices = {}
-    for mask in masks:
-        dice = check_output(["clitkDice", "-i", masks[mask]['fixed'], "-j", masks[mask]['moving']])
-        dice_indices[mask] = float(dice.decode("utf-8"))
-
-    return dice_indices
 
 
 # Open file and edit the bspline interpolation order.
@@ -85,22 +75,22 @@ def apply_transform(transform_file, images, transformation_dir, def_field):
 # Register the input pair using elastix and the defined parameters file.
 def elastix_cli(images, masks, parameters, output, t0=None):
     # Create elastix argument list.
-    elx_arguments = ["-f", images["fixed"], "-m", images["moving"], "-out", output, "-p", parameters]
+    elx_args = ["-f", images["fixed"], "-m", images["moving"], "-out", output, "-p", parameters, "-priority", "high"]
 
     # Add initial transform file to the arguments, if available.
     if t0:
-        elx_arguments.extend(["-t0", t0])
+        elx_args.extend(["-t0", t0])
 
     # Use the defined masks.
     if masks:
         if masks["fixed"]:
-            elx_arguments.extend(["-fMask", masks["fixed"]])
+            elx_args.extend(["-fMask", masks["fixed"]])
         if masks["moving"]:
-            elx_arguments.extend(["-mMask", masks["moving"]])
+            elx_args.extend(["-mMask", masks["moving"]])
 
     try:
         # Perform registration, rename the resulted image and return the transformation.
-        check_output(["elastix", *elx_arguments])
+        check_output(["elastix", *elx_args])
         return os.path.join(output, "TransformParameters.0.txt")
     except CalledProcessError as e:
         # Catch possible error
@@ -127,7 +117,9 @@ def main():
     # Create the results dataframe.
     patients_list = os.listdir(input_dir)
     results_path = f"{create_dir('.', 'results')}/{pipeline['name']}.xlsx"
-    dfs = open_data_frame(patients_list, pipeline["evaluate_on"], results_path)
+
+    stages = ["Initial", *[x["name"] for x in pipeline["registration_steps"]]]
+    df = open_data_frame(patients_list, stages, pipeline["evaluate_on"], ["Dice", "M.A.D"])
 
     # Start registration for each patient in the dataset.
     for patient in patients_list:
@@ -136,8 +128,13 @@ def main():
         evaluation_masks = get_mask_paths(patient_input, pipeline["studies"], pipeline["evaluate_on"])
 
         # Calculate the initial dice index and save the results.
-        dice = calculate_dice(evaluation_masks)
-        dfs = update_dataframe(dfs, patient, dice, "Initial dice", results_path)
+        print(f"\t-Calculating Metrics.")
+        metrics = {}
+        for mask in evaluation_masks:
+            metrics[mask] = calculate_metrics(evaluation_masks[mask]["fixed"], evaluation_masks[mask]["moving"])
+            print(f"\t\t-{mask}: {metrics[mask]}.")
+
+        df = update_dataframe_values(df, patient, "Initial", metrics, results_path)
 
         # Delete pipeline directory if it already exists and create a new one.
         pipeline_output = os.path.join(patient_output, pipeline["name"])
@@ -179,13 +176,14 @@ def main():
 
             # Recalculate dice index only to transformed masks.
             transformed_masks = {x: transformed[x] for x in transformed if x != "volume"}
-            dice = calculate_dice(transformed_masks)
-            dfs = update_dataframe(dfs, patient, dice, f"{transform_name}", results_path)
-        print()
 
-    # Get statistics for the dataframes and save.
-    dataframe_stats(dfs)
-    save_dfs(dfs, results_path)
+            print(f"\t-Calculating Metrics.")
+            for mask in evaluation_masks:
+                metrics[mask] = calculate_metrics(transformed_masks[mask]["fixed"], transformed_masks[mask]["moving"])
+                print(f"\t\t-{mask}: {metrics[mask]}.")
+            df = update_dataframe_values(df, patient, transform_name, metrics, results_path)
+        print()
+    dataframe_stats(df, results_path)
 
 
 # Use this file as a script and run it.

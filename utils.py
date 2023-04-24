@@ -2,8 +2,8 @@ import argparse
 import json
 import os
 import sys
+
 from shutil import rmtree, copytree
-import pandas as pd
 
 
 # Setup the parser and the correct argument messages loaded from the respective json file.
@@ -78,46 +78,6 @@ def rename_instance(working_dir, old_name, new_name):
     os.rename(old_path, new_path)
 
     return new_path
-
-
-# Save the dataframes
-def save_dfs(dfs, path):
-    # Create a Pandas Excel writer using XlsxWriter as the engine.
-    writer = pd.ExcelWriter(path, engine="xlsxwriter")
-    for df in dfs:
-        dfs[df].to_excel(writer, sheet_name=df)
-    writer.close()
-
-
-# Create a dataframe and load the xl file if it exists.
-def open_data_frame(index_list, sheets, output):
-    dfs = {}
-    for item in sheets:
-        dfs[item] = pd.DataFrame()
-        dfs[item].index = index_list
-
-    save_dfs(dfs, output)
-    return dfs
-
-
-# Add a new column to the dataframe.
-def update_dataframe(dfs, patient, dice, column_name, output):
-    print("\t-Dice index.")
-    for idx in dice:
-        dfs[idx].loc[patient, column_name] = dice[idx]
-        print(f"\t\t-{idx}: {ConsoleColors.UNDERLINE}{dice[idx]}.{ConsoleColors.END}")
-
-    save_dfs(dfs, output)
-    return dfs
-
-
-# Calculate mean and median for each column of the dataframe.
-def dataframe_stats(dfs):
-    for df in dfs:
-        dfs[df].loc["Min"] = dfs[df].min()
-        dfs[df].loc['Max'] = dfs[df].max()
-        dfs[df].loc['Mean'] = dfs[df].mean()
-        dfs[df].loc['Median'] = dfs[df].median()
 
 
 # Console colors.
