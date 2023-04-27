@@ -158,8 +158,10 @@ def check_for_duplicates(input_dir, patients):
 
 
 def main():
-    args = setup_parser("parser/database_parser.json")
-    input_dir, output_dir = args.i, args.o
+    dir_name = os.path.dirname(__file__)
+    args = setup_parser(f"{dir_name}/parser/database_parser.json")
+    input_dir = os.path.join(dir_name, args.i)
+    output_dir = os.path.join(dir_name, args.o)
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
@@ -170,8 +172,8 @@ def main():
     # For each patient of the dataset.
     for patient in os.listdir(input_dir):
         print(f"\n-Extracting patient: {patient}")
-        patient_input = os.path.join(input_dir, patient)
-        patient_output = os.path.join(output_dir, patient)
+        patient_input = os.path.join(dir_name, input_dir, patient)
+        patient_output = os.path.join(dir_name, output_dir, patient)
 
         # For each study of the patient (ceMRI, SPECT-CT, PET-CT).
         for study in os.listdir(patient_input):
@@ -182,7 +184,7 @@ def main():
         break
 
     # Make a check to handle any possible duplicate data.
-    # check_for_duplicates(output_dir, os.listdir(output_dir))
+    check_for_duplicates(output_dir, os.listdir(output_dir))
 
 
 # Use this file as a script and run it.

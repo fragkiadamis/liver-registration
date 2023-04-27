@@ -139,8 +139,10 @@ def create_bounding_boxes(pair):
 
 
 def main():
+    dir_name = os.path.dirname(__file__)
     args = setup_parser("parser/preprocessing_parser.json")
-    input_dir, output_dir = args.i, args.o
+    input_dir = os.path.join(dir_name, args.i)
+    output_dir = os.path.join(dir_name, args.o)
     ct_study = args.std if args.std else "SPECT-CT"
     rs_reference = args.rsr if args.rsr else "CT"
 
@@ -152,7 +154,7 @@ def main():
 
     # Do the required preprocessing for each of the patients.
     for patient in os.listdir(output_dir):
-        patient_dir = os.path.join(output_dir, patient)
+        patient_dir = os.path.join(dir_name, output_dir, patient)
         studies_dir = [study for study in os.listdir(patient_dir) if study == "ceMRI" or study == ct_study]
 
         pair = get_pair_paths(patient_dir, studies_dir)

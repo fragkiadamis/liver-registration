@@ -100,8 +100,11 @@ def elastix_cli(images, masks, parameters, output, t0=None):
 
 
 def main():
-    args = setup_parser("parser/elastix_cli_parser.json")
-    input_dir, output_dir, pipeline_file = args.i, args.o, args.p
+    dir_name = os.path.dirname(__file__)
+    args = setup_parser(f"{dir_name}/parser/elastix_cli_parser.json")
+    input_dir = os.path.join(dir_name, args.i)
+    output_dir = os.path.join(dir_name, args.o)
+    pipeline_file = os.path.join(dir_name, args.p)
 
     # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
@@ -128,7 +131,8 @@ def main():
     # Start registration for each patient in the dataset.
     for patient in patients_list:
         print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}.{ConsoleColors.END}")
-        patient_input, patient_output = os.path.join(input_dir, patient), os.path.join(output_dir, patient)
+        patient_input = os.path.join(dir_name, input_dir, patient)
+        patient_output = os.path.join(dir_name, output_dir, patient)
         evaluation_masks = get_mask_paths(patient_input, pipeline["studies"], pipeline["evaluate_on"])
 
         # Calculate the initial dice index and save the results.
@@ -151,7 +155,7 @@ def main():
             images = get_image_paths(patient_input, pipeline["studies"], step["images"])
             masks = get_image_paths(patient_input, pipeline["studies"], step["masks"]) if "masks" in step else None
 
-            parameters_file, transform_name = step["parameters"], step["name"]
+            parameters_file, transform_name = os.path.join(dir_name, step["parameters"]), step["name"]
 
             # Create current transform's output.
             transform_output = create_dir(pipeline_output, transform_name)
