@@ -11,9 +11,9 @@ OUTPUT_DIR="${PROJECT_DIR}/data/elastix"
 LOG_DIR="${PROJECT_DIR}/logs"
 PIPELINE="${PROJECT_DIR}/pipelines/exp3.json"
 
+# For each patient submit a registration job.
 for PATIENT_DIR in $INPUT_DIR/*
-	do qsub job.ksh $PROJECT_DIR/registration.py "-i ${PATIENT_DIR}" "-o ${OUTPUT_DIR}/${PATIENT_DIR##*/}" "-p ${PIPELINE}" "${LOG_DIR}"/${PATIENT_DIR##*/}".out"
+	do qsub job.ksh "$PROJECT_DIR/registration.py" "${PATIENT_DIR}" "${OUTPUT_DIR}/${PATIENT_DIR##*/}" "${PIPELINE}" "$LOG_DIR/${PATIENT_DIR##*/}.out"
 done
 
 echo "Registration job submission ended!"
-
