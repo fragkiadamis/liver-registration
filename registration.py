@@ -2,6 +2,7 @@
 import json
 import os
 from copy import deepcopy
+from datetime import datetime
 from subprocess import check_output, CalledProcessError
 
 from metrics import open_data_frame, update_dataframe_values, dataframe_stats, calculate_metrics
@@ -121,6 +122,9 @@ def main():
     stages = ["Initial", *[x["name"] for x in pipeline["registration_steps"]]]
     df = open_data_frame(patients_list, stages, pipeline["evaluate_on"], ["Dice", "H.D"])
 
+    t1 = datetime.now()
+    print('Start time:', t1.time())
+
     # Start registration for each patient in the dataset.
     for patient in patients_list:
         print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}.{ConsoleColors.END}")
@@ -184,6 +188,14 @@ def main():
             df = update_dataframe_values(df, patient, transform_name, metrics, results_path)
         print()
     dataframe_stats(df, results_path)
+
+    t2 = datetime.now()
+    print('End time:', t2.time())
+
+    delta = t2 - t1
+    seconds = delta.total_seconds()
+    minutes = seconds / 60
+    print(f"Duration: {minutes} minutes")
 
 
 # Use this file as a script and run it.
