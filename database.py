@@ -1,8 +1,12 @@
 # Import necessary files and libraries.
 import os
 from subprocess import run
-import numpy as np
+
+from pydicom import read_file
+# import h5py
 import nibabel as nib
+import numpy as np
+
 from utils import setup_parser, validate_paths, create_output_structures, rename_instance
 
 
@@ -81,10 +85,25 @@ def extract_from_dicom(study_input, study_output, study):
         )
         fix_filenames(study_output, study)
 
-    # TODO: extract transformation parameters from dicom reg files (not in priority).
+    # TODO: Make sure that the correct information is being extracted.
     for registration in dicom_reg:
+        registration_path = os.path.join(study_input, registration)
+        registration_file = get_files(registration_path)[0]
+
         print(f"\t\t-Extract transform: {registration}")
-        continue
+        dcm_reg = read_file(registration_file)
+        vector_grid = np.asarray(dcm_reg.DeformableRegistrationSequence[-1].
+                                 DeformableRegistrationGridSequence[-1][0x64, 0x09].value)
+        reg_matrix = np.asarray(dcm_reg.DeformableRegistrationSequence[-1].
+                                PreDeformationMatrixRegistrationSequence[-1][0x3006, 0xc6].value)
+
+        print(dir(dcm_reg.DeformableRegistrationSequence[-1]))
+
+        file = open(f"{study_output}/transformation.mat", "w+")
+        file.write(str(reg_matrix))
+        file.close()
+        # h5f = h5py.File(f"{study_output}/transformation.h5", "w")
+        # h5f.create_dataset('dataset_1', data=reg_matrix)
 
 
 # Compare the two volumes two see if they are exact the same or similar.
@@ -160,9 +179,10 @@ def main():
             study_input = os.path.join(patient_input, study)
             study_output = os.path.join(patient_output, study)
             extract_from_dicom(study_input, study_output, study)
+        break
 
     # Make a check to handle any possible duplicate data.
-    check_for_duplicates(output_dir, os.listdir(output_dir))
+    # check_for_duplicates(output_dir, os.listdir(output_dir))
 
 
 # Use this file as a script and run it.

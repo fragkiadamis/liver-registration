@@ -5,8 +5,8 @@ from copy import deepcopy
 from subprocess import check_output, CalledProcessError
 
 from metrics import open_data_frame, update_dataframe_values, dataframe_stats, calculate_metrics
-from utils import setup_parser, validate_paths, \
-    create_output_structures, create_dir, rename_instance, delete_dir, ConsoleColors
+from utils import setup_parser, validate_paths, create_output_structures, \
+                  create_dir, rename_instance, delete_dir, ConsoleColors
 
 
 def get_mask_paths(patient, studies, masks):
@@ -119,7 +119,7 @@ def main():
     results_path = f"{create_dir('.', 'results')}/{pipeline['name']}.xlsx"
 
     stages = ["Initial", *[x["name"] for x in pipeline["registration_steps"]]]
-    df = open_data_frame(patients_list, stages, pipeline["evaluate_on"], ["Dice", "M.A.D"])
+    df = open_data_frame(patients_list, stages, pipeline["evaluate_on"], ["Dice", "H.D"])
 
     # Start registration for each patient in the dataset.
     for patient in patients_list:

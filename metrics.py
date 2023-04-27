@@ -42,7 +42,7 @@ def dataframe_stats(df, output):
             "Max": max(df[col]),
             "Mean": mean(df[col]),
             "Median": median(df[col]),
-            "S.T.D": np.std(df[col])
+            "ST.D": np.std(df[col])
         }
 
     for st in stats:
@@ -73,20 +73,20 @@ def calculate_metrics(ground_truth, moving):
 
     # Create the distance matrix with samples because the "on" values on both images are so many that the program
     # overflows the memory while trying to create the distance matrix.
-    n_samples = 10000
-    ground_truth_sample = np.random.choice(ground_truth_coords.shape[0], n_samples, replace=True)
-    moving_sample = np.random.choice(moving_coords.shape[0], n_samples, replace=True)
+    # n_samples = 10000
+    # ground_truth_sample = np.random.choice(ground_truth_coords.shape[0], n_samples, replace=True)
+    # moving_sample = np.random.choice(moving_coords.shape[0], n_samples, replace=True)
 
     # Calculate the distance matrix between the sampled "on" voxels in each image
-    dist_matrix = cdist(ground_truth_coords[ground_truth_sample], moving_coords[moving_sample])
+    # dist_matrix = cdist(ground_truth_coords[ground_truth_sample], moving_coords[moving_sample])
 
     # Calculate the directed Hausdorff distance between the images
-    # distance_gdth_2_moving = directed_hausdorff(ground_truth_coords, moving_coords)[0]
-    # distance_moving_2_gdth = directed_hausdorff(moving_coords, ground_truth_coords)[0]
+    distance_gdth_2_moving = directed_hausdorff(ground_truth_coords, moving_coords)[0]
+    distance_moving_2_gdth = directed_hausdorff(moving_coords, ground_truth_coords)[0]
 
     return {
         "Dice": 2 * intersection_sum / (ground_truth_sum + moving_sum),
         # "Jaccard": intersection_sum / union_sum,
-        "M.A.D": np.mean(np.abs(dist_matrix)),
-        # "H.D": max(distance_gdth_2_moving, distance_moving_2_gdth)
+        # "M.A.D": np.mean(np.abs(dist_matrix)),
+        "H.D": max(distance_gdth_2_moving, distance_moving_2_gdth)
     }
