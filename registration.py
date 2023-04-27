@@ -105,7 +105,7 @@ def main():
     # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
     if not os.path.exists(output_dir):
-        create_output_structures(input_dir, output_dir, depth=1)
+        os.mkdir(output_dir)
 
     # Open file and create the pipeline dictionary from json.
     pl = open(pipeline_file)
