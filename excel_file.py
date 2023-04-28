@@ -37,7 +37,6 @@ def save_dfs(df, path):
 
 # Insert the current's stage values and save the dataframe.
 def update_dataframe_values(df, patient, evaluation, output):
-    print(evaluation)
     for mask in evaluation:
         for stage in evaluation[mask]:
             for metric in evaluation[mask][stage]:
