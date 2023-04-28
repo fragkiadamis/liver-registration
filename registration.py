@@ -4,8 +4,11 @@ import os
 from copy import deepcopy
 from subprocess import check_output, CalledProcessError
 
-from utils import setup_parser, validate_paths, create_output_structures, \
-                  create_dir, rename_instance, delete_dir, ConsoleColors
+import nibabel as nib
+import numpy as np
+from scipy.spatial.distance import directed_hausdorff
+
+from utils import setup_parser, validate_paths, ConsoleColors, create_dir, rename_instance, delete_dir
 
 
 def get_mask_paths(patient, studies, masks):
@@ -63,10 +66,12 @@ def apply_transform(transform_file, images, transformation_dir, def_field):
 
         # Apply transformation.
         check_output(["transformix", *trx_args])
-        rename_instance(transformation_dir, "result.nii.gz", f"{img}_result.nii.gz")
+        images[img]["moving"] = rename_instance(transformation_dir, "result.nii.gz", f"{img}_result.nii.gz")
 
     # Reset bspline interpolation order to 3. If it's not changed, nothing is going to happen.
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "0", "new": "3"})
+
+    return images
 
 
 # Register the input pair using elastix and the defined parameters file.
@@ -95,6 +100,46 @@ def elastix_cli(images, masks, parameters, output, t0=None):
         return -1
 
 
+# Calculate Dice, Mean Absolute Distance etc. Use comments to include/exclude metrics.
+def calculate_metrics(ground_truth, moving):
+    ground_truth = nib.load(ground_truth)
+    moving = nib.load(moving)
+
+    # For overlap metrics
+    ground_truth_data = np.array(ground_truth.get_fdata()).astype(int)
+    moving_data = np.array(moving.get_fdata()).astype(int)
+    ground_truth_sum = np.sum(ground_truth_data)
+    moving_sum = np.sum(moving_data)
+    intersection = ground_truth_data & moving_data
+    # union = ground_truth_data | moving_data
+    intersection_sum = np.count_nonzero(intersection)
+    # union_sum = np.count_nonzero(union)
+
+    # For distance metrics
+    ground_truth_coords = np.array(np.where(ground_truth_data == 1)).T
+    moving_coords = np.array(np.where(moving_data == 1)).T
+
+    # Create the distance matrix with samples because the "on" values on both images are so many that the program
+    # overflows the memory while trying to create the distance matrix.
+    # n_samples = 10000
+    # ground_truth_sample = np.random.choice(ground_truth_coords.shape[0], n_samples, replace=True)
+    # moving_sample = np.random.choice(moving_coords.shape[0], n_samples, replace=True)
+
+    # Calculate the distance matrix between the sampled "on" voxels in each image
+    # dist_matrix = cdist(ground_truth_coords[ground_truth_sample], moving_coords[moving_sample])
+
+    # Calculate the directed Hausdorff distance between the images
+    distance_gt_2_moving = directed_hausdorff(ground_truth_coords, moving_coords)[0]
+    distance_moving_2_gt = directed_hausdorff(moving_coords, ground_truth_coords)[0]
+
+    return {
+        "Dice": 2 * intersection_sum / (ground_truth_sum + moving_sum),
+        # "Jaccard": intersection_sum / union_sum,
+        # "M.A.D": np.mean(np.abs(dist_matrix)),
+        "H.D": max(distance_gt_2_moving, distance_moving_2_gt)
+    }
+
+
 def main():
     dir_name = os.path.dirname(__file__)
     args = setup_parser(f"{dir_name}/parser/elastix_cli_parser.json")
@@ -115,7 +160,15 @@ def main():
     print(f"{ConsoleColors.HEADER}Pipeline: {pipeline['name']}{ConsoleColors.END}")
 
     print(f"-Registering patient: {ConsoleColors.OK_BLUE}{input_dir}.{ConsoleColors.END}")
+
+    results = {}
     evaluation_masks = get_mask_paths(input_dir, pipeline["studies"], pipeline["evaluate_on"])
+    print(f"\t-Calculating Metrics.")
+    for mask in evaluation_masks:
+        results[mask] = {
+            "Initial": calculate_metrics(evaluation_masks[mask]["fixed"], evaluation_masks[mask]["moving"])
+        }
+        print(f"\t\t-{mask}: {results[mask]}.")
 
     # Delete pipeline directory if it already exists and create a new one.
     pipeline_output = os.path.join(output_dir, pipeline["name"])
@@ -153,7 +206,20 @@ def main():
 
         # Apply the transformation on the moving images.
         print(f"\t-Apply transform to masks.")
-        apply_transform(registration, image_set, transform_output, step["def_field"])
+        transformed = apply_transform(registration, image_set, transform_output, step["def_field"])
+
+        # Recalculate dice index only to transformed masks.
+        transformed_masks = {x: transformed[x] for x in transformed if x != "volume"}
+
+        print(f"\t-Calculating Metrics.")
+        for mask in evaluation_masks:
+            results[mask].update({
+                transform_name: calculate_metrics(transformed_masks[mask]["fixed"], transformed_masks[mask]["moving"])
+            })
+            print(f"\t\t-{mask}: {results[mask]}.")
+
+    with open(f"{pipeline_output}/evaluation.json", "w") as fp:
+        json.dump(results, fp)
 
 
 # Use this file as a script and run it.
