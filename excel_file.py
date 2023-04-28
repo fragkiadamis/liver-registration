@@ -55,8 +55,9 @@ def open_data_frame(patients, evaluation, output):
         for metric in evaluation[mask]:
             metrics.extend(list(evaluation[mask][metric]))
 
-    stages = list(set(stages))
-    metrics = list(set(metrics))
+    # Remove duplicates while preserving the order.
+    stages = list(dict.fromkeys(stages))
+    metrics = list(dict.fromkeys(metrics))
 
     cols = pd.MultiIndex.from_product([stages, masks, metrics])
     df = pd.DataFrame(index=patients, columns=cols)
@@ -80,14 +81,17 @@ def main():
         pipeline_path = os.path.join(input_dir, patient, pipeline)
         evaluation_path = os.path.join(pipeline_path, "evaluation.json")
 
-        pf = open(evaluation_path)
-        evaluation = json.loads(pf.read())
-        pf.close()
+        if os.path.exists(evaluation_path):
+            pf = open(evaluation_path)
+            evaluation = json.loads(pf.read())
+            pf.close()
 
-        if df is None:
-            df = open_data_frame(patients, evaluation, results_path)
+            if df is None:
+                df = open_data_frame(patients, evaluation, results_path)
 
-        update_dataframe_values(df, patient, evaluation, results_path)
+            update_dataframe_values(df, patient, evaluation, results_path)
+
+    dataframe_stats(df, results_path)
 
 
 if __name__ == "__main__":
