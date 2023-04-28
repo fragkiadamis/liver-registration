@@ -85,12 +85,10 @@ def main():
         evaluation = json.loads(pf.read())
         pf.close()
 
-        if not df:
+        if df is None:
             df = open_data_frame(patients, evaluation, results_path)
 
         update_dataframe_values(df, patient, evaluation, results_path)
-
-#
 
 
 if __name__ == "__main__":
