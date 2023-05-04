@@ -4,7 +4,8 @@
     "required": {
       "-i": "Path to the nifty files.",
       "-o": "Path to the registration output.",
-      "-p": "Pipeline json file. Specify the registration pipeline file."
+      "-p": "Patient that is going to be registered.",
+      "-pl": "Pipeline json file. Specify the registration pipeline file."
     },
     "optional": {
     }

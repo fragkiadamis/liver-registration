@@ -145,12 +145,13 @@ def main():
     args = setup_parser(f"{dir_name}/parser/elastix_cli_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = os.path.join(dir_name, args.o)
-    pipeline_file = os.path.join(dir_name, args.p)
+    pipeline_file = os.path.join(dir_name, args.pl)
+    patient = args.p
+    patient_dir = os.path.join(input_dir, patient)
 
     # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+    create_dir(dir_name, output_dir)
 
     # Open file and create the pipeline dictionary from json.
     pl = open(pipeline_file)
@@ -158,11 +159,10 @@ def main():
     pl.close()
 
     print(f"{ConsoleColors.HEADER}Pipeline: {pipeline['name']}{ConsoleColors.END}")
-
-    print(f"-Registering patient: {ConsoleColors.OK_BLUE}{input_dir}.{ConsoleColors.END}")
+    print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}.{ConsoleColors.END}")
 
     results = {}
-    evaluation_masks = get_mask_paths(input_dir, pipeline["studies"], pipeline["evaluate_on"])
+    evaluation_masks = get_mask_paths(patient_dir, pipeline["studies"], pipeline["evaluate_on"])
     print(f"\t-Calculating Metrics.")
     for mask in evaluation_masks:
         results[mask] = {
@@ -171,20 +171,20 @@ def main():
         print(f"\t\t-{mask}: {results[mask]}.")
 
     # Delete pipeline directory if it already exists and create a new one.
-    pipeline_output = os.path.join(output_dir, pipeline["name"])
-    delete_dir(pipeline_output)
-    create_dir(output_dir, pipeline["name"])
+    delete_dir(os.path.join(output_dir, pipeline["name"]))
+    pipeline_output = create_dir(output_dir, pipeline["name"])
+    patient_output = create_dir(pipeline_output, patient)
 
     registration = None
     for step in pipeline["registration_steps"]:
         # Get transform's properties.
-        images = get_image_paths(input_dir, pipeline["studies"], step["images"])
-        masks = get_image_paths(input_dir, pipeline["studies"], step["masks"]) if "masks" in step else None
+        images = get_image_paths(patient_dir, pipeline["studies"], step["images"])
+        masks = get_image_paths(patient_dir, pipeline["studies"], step["masks"]) if "masks" in step else None
 
         parameters_file, transform_name = os.path.join(dir_name, step["parameters"]), step["name"]
 
         # Create current transform's output.
-        transform_output = create_dir(pipeline_output, transform_name)
+        transform_output = create_dir(patient_output, transform_name)
 
         # Perform the registration, which will return a transformation file. This transformation will be used in
         # the next registration step of the pipeline as initial transform "t0".
@@ -200,8 +200,8 @@ def main():
         image_set = deepcopy(evaluation_masks)
         if pipeline["apply_on_volume"]:
             image_set["volume"] = {
-                "fixed": os.path.join(input_dir, pipeline["studies"]["fixed"], "volume.nii.gz"),
-                "moving": os.path.join(input_dir, pipeline["studies"]["moving"], "volume.nii.gz")
+                "fixed": os.path.join(patient_dir, pipeline["studies"]["fixed"], "volume.nii.gz"),
+                "moving": os.path.join(patient_dir, pipeline["studies"]["moving"], "volume.nii.gz")
             }
 
         # Apply the transformation on the moving images.
@@ -218,7 +218,7 @@ def main():
             })
             print(f"\t\t-{mask}: {results[mask]}.")
 
-    with open(f"{pipeline_output}/evaluation.json", "w") as fp:
+    with open(f"{patient_output}/evaluation.json", "w") as fp:
         json.dump(results, fp)
 
 

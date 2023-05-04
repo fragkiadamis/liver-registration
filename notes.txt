@@ -1,13 +1,29 @@
-Preprocessing shit that I might want to try before the volume registrations...
-1) Check the results with the bounding boxes with the original intensities. Check for preprocessing if any
-   kind of normalisation is going to better the results. Maybe set every pixel that is less than zero on the CT
-   to 0 (or -1000... check if this yields different results in the registration process).
+Correspondence:
 
-2) Later check also about histogram preprocessing for the images.
-
-3) Try translating the boundary boxes using only the corners (Felix' idea). Maybe I'll need to code myself the
-registration process here... Check if I can do it with the feature points registration in elastix manual (Section 6 -
-Advanced Registration)
-
-4) Try extracting the boxes with only the contours or the outlines as 1 (my idea). Then try a number of the experiments
-described above to make a comparison and find out if this method actually helps the registration of the bounding box.
+JaneDoe_ANON25911 0
+JaneDoe_ANON69091 1
+JaneDoe_ANON83544 2
+JohnDoe_ANON10507 3
+JohnDoe_ANON13231 4
+JohnDoe_ANON15860 5
+JohnDoe_ANON21673 6
+JohnDoe_ANON24065 7
+JohnDoe_ANON28177 8
+JohnDoe_ANON32161 9
+JohnDoe_ANON35169 10
+JohnDoe_ANON36736 11
+JohnDoe_ANON39011 12
+JohnDoe_ANON42529 13
+JohnDoe_ANON53833 14
+JohnDoe_ANON55098 15
+JohnDoe_ANON55240 16
+JohnDoe_ANON57371 17
+JohnDoe_ANON61677 18
+JohnDoe_ANON62642 19
+JohnDoe_ANON72295 20
+JohnDoe_ANON74328 21
+JohnDoe_ANON77471 22
+JohnDoe_ANON81710 23
+JohnDoe_ANON87212 24
+JohnDoe_ANON87639 25
+JohnDoe_ANON96978 26

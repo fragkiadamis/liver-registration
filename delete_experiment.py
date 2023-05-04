@@ -7,14 +7,11 @@ from utils import setup_parser
 # directory and finally delete the directories of these experiments.
 def main():
     args = setup_parser("parser/delete_experiment_parser.json")
-    parent_dir, experiments = args.i, args.exp.split(",")
+    elastix_dir, experiments = args.i, args.exp.split(",")
 
-    patients = os.listdir(parent_dir)
-    for patient in patients:
-        patient_path = os.path.join(parent_dir, patient)
-        for exp in experiments:
-            if exp in os.listdir(patient_path):
-                rmtree(os.path.join(patient_path, exp))
+    for exp in experiments:
+        if exp in os.listdir(elastix_dir):
+            rmtree(os.path.join(elastix_dir, exp))
 
 
 # Use this file as a script and run it.

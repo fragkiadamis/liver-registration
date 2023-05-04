@@ -31,12 +31,12 @@ def fix_filenames(parent_dir, study):
         new_filename = filename.lower()
 
         # Make the RT structures filename consistent.
-        if "foie" in new_filename or "liver" in new_filename:
-            new_filename = "liver.nii.gz"
-        elif "tumeur" in new_filename or "tumor" in new_filename:
-            new_filename = "tumor.nii.gz"
-        elif "necrosis" in new_filename:
+        if "necrosis" in new_filename or "nec" in new_filename:
             new_filename = "necrosis.nii.gz"
+        elif "foie" in new_filename or "liver" in new_filename:
+            new_filename = "liver.nii.gz"
+        elif "tumeur" in new_filename or "tumor" in new_filename or "tum" in new_filename:
+            new_filename = "tumor.nii.gz"
 
         # If already exists, change name again...
         ascending = 1
@@ -87,21 +87,22 @@ def extract_from_dicom(study_input, study_output, study):
 
     # TODO: Make sure that the correct information is being extracted.
     for registration in dicom_reg:
-        registration_path = os.path.join(study_input, registration)
-        registration_file = get_files(registration_path)[0]
-
-        print(f"\t\t-Extract transform: {registration}")
-        dcm_reg = read_file(registration_file)
-        vector_grid = np.asarray(dcm_reg.DeformableRegistrationSequence[-1].
-                                 DeformableRegistrationGridSequence[-1][0x64, 0x09].value)
-        reg_matrix = np.asarray(dcm_reg.DeformableRegistrationSequence[-1].
-                                PreDeformationMatrixRegistrationSequence[-1][0x3006, 0xc6].value)
-
-        print(dir(dcm_reg.DeformableRegistrationSequence[-1]))
-
-        file = open(f"{study_output}/transformation.mat", "w+")
-        file.write(str(reg_matrix))
-        file.close()
+        pass
+        # registration_path = os.path.join(study_input, registration)
+        # registration_file = get_files(registration_path)[0]
+        #
+        # print(f"\t\t-Extract transform: {registration}")
+        # dcm_reg = read_file(registration_file)
+        # vector_grid = np.asarray(dcm_reg.DeformableRegistrationSequence[-1].
+        #                          DeformableRegistrationGridSequence[-1][0x64, 0x09].value)
+        # reg_matrix = np.asarray(dcm_reg.DeformableRegistrationSequence[-1].
+        #                         PreDeformationMatrixRegistrationSequence[-1][0x3006, 0xc6].value)
+        #
+        # print(dir(dcm_reg.DeformableRegistrationSequence[-1]))
+        #
+        # file = open(f"{study_output}/transformation.mat", "w+")
+        # file.write(str(reg_matrix))
+        # file.close()
         # h5f = h5py.File(f"{study_output}/transformation.h5", "w")
         # h5f.create_dataset('dataset_1', data=reg_matrix)
 
@@ -181,7 +182,6 @@ def main():
             study_input = os.path.join(patient_input, study)
             study_output = os.path.join(patient_output, study)
             extract_from_dicom(study_input, study_output, study)
-        break
 
     # Make a check to handle any possible duplicate data.
     check_for_duplicates(output_dir, os.listdir(output_dir))

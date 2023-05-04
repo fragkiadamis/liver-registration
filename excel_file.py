@@ -74,12 +74,13 @@ def main():
     pipeline = args.pl
 
     df = None
-    results_path = f"results/{pipeline}.xlsx"
+    results_path = f"{pipeline}.xlsx"
 
-    patients = os.listdir(input_dir)
+    exp_path = os.path.join(input_dir, pipeline)
+    patients = os.listdir(exp_path)
     for patient in patients:
-        pipeline_path = os.path.join(input_dir, patient, pipeline)
-        evaluation_path = os.path.join(pipeline_path, "evaluation.json")
+        patient_dir = os.path.join(exp_path, patient)
+        evaluation_path = os.path.join(patient_dir, "evaluation.json")
 
         if os.path.exists(evaluation_path):
             pf = open(evaluation_path)
@@ -91,7 +92,7 @@ def main():
 
             update_dataframe_values(df, patient, evaluation, results_path)
 
-    dataframe_stats(df, results_path)
+        dataframe_stats(df, results_path)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,7 @@
 # Import necessary files and libraries.
 import os
-from subprocess import run
+from subprocess import run, check_output
 
-import SimpleITK as sITK
 import nibabel as nib
 import numpy as np
 
@@ -13,7 +12,7 @@ from utils import setup_parser, validate_paths, create_output_structures
 def get_pair_paths(parent_dir, studies):
     pair = {}
     for study in studies:
-        pair[f"{'CT' if 'CT' in study else 'MRI'}"] = {
+        pair[f"{study if 'CT' in study else 'MRI'}"] = {
             "volume": os.path.join(parent_dir, study, "volume.nii.gz"),
             "liver": os.path.join(parent_dir, study, "liver.nii.gz"),
             "tumor": os.path.join(parent_dir, study, "tumor.nii.gz")
@@ -21,18 +20,72 @@ def get_pair_paths(parent_dir, studies):
     return pair
 
 
-# Find and return the minimum spacing for each axis between two volumes.
-def find_minimum(path_1, path_2):
-    ct_volume = sITK.ReadImage(path_1)
-    mri_volume = sITK.ReadImage(path_2)
+# Create one segmentation by adding all the different segmentations of the specified anatomy.
+def add_segmentations(patient_dir, anatomies):
+    for anatomy in anatomies:
+        for study in anatomies[anatomy]:
+            study_dir = os.path.join(patient_dir, study)
+            segmentations, size, volume_nii = [], [], None
 
-    ct_spacing, mri_spacing = ct_volume.GetSpacing(), mri_volume.GetSpacing()
+            for file in os.listdir(study_dir):
+                file_path = os.path.join(study_dir, file)
+
+                if "volume" in file:
+                    volume_nii = nib.load(file_path)
+                    size = np.array(volume_nii.get_fdata()).shape
+
+                if anatomy in file:
+                    segmentations.append(file_path)
+
+            total_seg = np.zeros(size)
+            for seg_path in segmentations:
+                segmentation = nib.load(seg_path)
+                total_seg += np.array(segmentation.get_fdata())
+                os.remove(seg_path)
+
+            total_seg = total_seg.astype(np.uint8)
+            total_seg = nib.Nifti1Image(total_seg, header=volume_nii.header, affine=volume_nii.affine)
+            nib.save(total_seg, os.path.join(study_dir, "tumor.nii.gz"))
+
+
+# Get the spacing for each axis of the image.
+def get_spacing(input_image):
+    output = check_output(["clitkImageInfo", input_image])
+    output = output.decode()
+    spacing = output.split(" ")[3]
+    spacing_splitted = spacing.split("x")
+
+    # Return the spacing in float type.
+    return [float(x) for x in spacing_splitted]
+
+
+# Find and return the minimum spacing for each axis between two volumes.
+def find_minimum_spacing(path_1, path_2):
+    img_1_spacing = get_spacing(path_1)
+    img_2_spacing = get_spacing(path_2)
+
     spacing = (
-        min(ct_spacing[0], mri_spacing[0]),
-        min(ct_spacing[1], mri_spacing[1]),
-        min(ct_spacing[2], mri_spacing[2])
+        min(img_1_spacing[0], img_2_spacing[0]),
+        min(img_1_spacing[1], img_2_spacing[1]),
+        min(img_1_spacing[2], img_2_spacing[2])
     )
     return spacing
+
+
+# Calculate and return the median spacing of the dataset.
+def get_median_spacing(input_dir):
+    # Get the spacing for all the images.
+    spacing_list = []
+    for image in os.listdir(input_dir):
+        image_path = os.path.join(input_dir, image)
+        image_spacing = get_spacing(image_path)
+        spacing_list.append(image_spacing)
+
+    # Get the median from the list.
+    spacing_list = np.asarray(spacing_list)
+    median_spacing = np.median(spacing_list, axis=0)
+
+    return median_spacing
 
 
 # Perform a bias field correction for the MRIs.
@@ -41,7 +94,7 @@ def bias_field_correction(mri):
 
 
 # Bring all the images of a patient into the same physical space of the chosen one.
-def resample(pair, like_modality):
+def resample_moving_2_fixed(pair, like_modality):
     # Get the image that gives the physical space reference.
     like_img = pair[like_modality]["volume"]
     # Get the images of the study that are about to be resampled.
@@ -56,20 +109,17 @@ def resample(pair, like_modality):
         run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img])
 
 
-# For all the available study pairs, adjust to minimum or predefined spacing for each axis (in mm).
-def change_spacing(pair, spacing=None):
-    # If there is not a predefined spacing, get the minimum spacing for each axis between the volumes
-    if not spacing:
-        spacing = find_minimum(pair["CT"]["volume"], pair["MRI"]["volume"])
+# Change the spacing of the images in the list.
+def resample(image_paths, spacing):
+    for img_path in image_paths:
+        arg_list = ["clitkAffineTransform", "-i", img_path, "-o", img_path, "--adaptive",
+                    f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}"]
 
-    for study in pair:
-        print(f"\t-Study: {study}")
-        for image in pair[study]:
-            img_path = pair[study][image]
-            print(f"\t\t-Image: {img_path}")
+        img = img_path.split("/")[-1]
+        if "liver" in img or "tumor" in img:
+            arg_list.append("--interp=0")
 
-            run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "--adaptive",
-                 f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}"])
+        run(arg_list)
 
 
 # Crop the pairs. For each study, crop automatically the mask and based on the mask, crop the volume.
@@ -138,37 +188,86 @@ def create_bounding_boxes(pair):
         nib.save(bounding_box_image, f"{split_volume[0]}_bb.{split_volume[1]}.gz")
 
 
+# Cast the voxel type of the images into float.
+def cast_to_float(image_paths):
+    for img_path in image_paths:
+        run([
+            "clitkImageConvert", "-i", img_path, "-o", img_path, "-t", "float"
+        ])
+
+
+# Get the statistics of the image.
+def get_statistics(img_path):
+    output = check_output(["clitkImageStatistics", '-v', img_path])
+    output = output.decode()
+    output_split = output.split("\n")
+
+    mean = float(output_split[6][5:])
+    std = 1 / float(output_split[9][6:])
+
+    return -mean, std
+
+
+# Perform a gaussian normalization to the images.
+def gaussian_normalize(image_paths):
+    for img_path in image_paths:
+        stats = get_statistics(img_path)
+
+        for idx, stat in enumerate(stats):
+            run(["clitkImageArithm", "-i", img_path, "-o", img_path, "-s", str(stat), "-t", str(idx)])
+
+
 def main():
     dir_name = os.path.dirname(__file__)
     args = setup_parser("parser/preprocessing_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = os.path.join(dir_name, args.o)
     ct_study = args.std if args.std else "SPECT-CT"
-    rs_reference = args.rsr if args.rsr else "CT"
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
 
-    # Create the output respective structures.
+    # Create the respective output structures. Those will be used for registration.
     create_output_structures(input_dir, output_dir, identical=True)
 
-    # Do the required preprocessing for each of the patients.
+    # Manually add the patients in this dictionary that have fragmented segmentations, in order to be added together
+    # and have one segmentation file.
+    sparse_seg = {
+        "JohnDoe_ANON28177": {"tumor": ["ceMRI", "SPECT-CT"]},
+        "JohnDoe_ANON39011": {"tumor": ["ceMRI"]},
+        "JohnDoe_ANON55098": {"tumor": ["ceMRI", "SPECT-CT"]},
+        "JohnDoe_ANON61677": {"tumor": ["ceMRI"]}
+    }
+
+    # Preprocessing for conventional registration usage.
     for patient in os.listdir(output_dir):
-        patient_dir = os.path.join(dir_name, output_dir, patient)
+        patient_dir = os.path.join(output_dir, patient)
         studies_dir = [study for study in os.listdir(patient_dir) if study == "ceMRI" or study == ct_study]
 
         pair = get_pair_paths(patient_dir, studies_dir)
+        fixed_images = [
+            item for item in [
+                pair[ct_study]["volume"],
+                pair[ct_study]["liver"],
+                pair[ct_study]["tumor"]
+            ]
+        ]
 
-        # print(f"\n-Bias field correction for patient: {patient}")
-        # bias_field_correction(pair["MRI"]["volume"])
-        print(f"\n-Adjust Spacing for patient: {patient}")
-        change_spacing(pair, (1, 1, 1))
+        if patient in sparse_seg:
+            print(f"Adding segmentations for patient {patient}")
+            add_segmentations(patient_dir, sparse_seg[patient])
+        print(f"-Bias field correction for patient: {patient}")
+        bias_field_correction(pair["MRI"]["volume"])
+        print(f"-Set Spacing for patient: {patient}")
+        # spacing = find_minimum_spacing(pair["CT"]["volume"], pair["MRI"]["volume"])
+        resample(fixed_images, (1, 1, 1))
         # print(f"\n-Cropping for patient: {patient}")
         # crop(pair)
-        print(f"\n-Resampling for patient: {patient}")
-        resample(pair, rs_reference)
-        print(f"\n-Create boundary boxes for patient: {patient}")
+        print(f"-Resampling for patient: {patient}")
+        resample_moving_2_fixed(pair, ct_study)
+        print(f"-Create boundary boxes for patient: {patient}")
         create_bounding_boxes(pair)
+        print()
 
 
 # Use this file as a script and run it.
