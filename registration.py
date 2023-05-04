@@ -147,7 +147,7 @@ def main():
     output_dir = os.path.join(dir_name, args.o)
     pipeline_file = os.path.join(dir_name, args.pl)
     patient = args.p
-    patient_dir = os.path.join(input_dir, patient)
+    patient_input = os.path.join(input_dir, patient)
 
     # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
@@ -162,7 +162,7 @@ def main():
     print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}.{ConsoleColors.END}")
 
     results = {}
-    evaluation_masks = get_mask_paths(patient_dir, pipeline["studies"], pipeline["evaluate_on"])
+    evaluation_masks = get_mask_paths(patient_input, pipeline["studies"], pipeline["evaluate_on"])
     print(f"\t-Calculating Metrics.")
     for mask in evaluation_masks:
         results[mask] = {
@@ -171,15 +171,15 @@ def main():
         print(f"\t\t-{mask}: {results[mask]}.")
 
     # Delete pipeline directory if it already exists and create a new one.
-    delete_dir(os.path.join(output_dir, pipeline["name"]))
     pipeline_output = create_dir(output_dir, pipeline["name"])
+    delete_dir(os.path.join(pipeline_output, patient))
     patient_output = create_dir(pipeline_output, patient)
 
     registration = None
     for step in pipeline["registration_steps"]:
         # Get transform's properties.
-        images = get_image_paths(patient_dir, pipeline["studies"], step["images"])
-        masks = get_image_paths(patient_dir, pipeline["studies"], step["masks"]) if "masks" in step else None
+        images = get_image_paths(patient_input, pipeline["studies"], step["images"])
+        masks = get_image_paths(patient_input, pipeline["studies"], step["masks"]) if "masks" in step else None
 
         parameters_file, transform_name = os.path.join(dir_name, step["parameters"]), step["name"]
 
@@ -200,8 +200,8 @@ def main():
         image_set = deepcopy(evaluation_masks)
         if pipeline["apply_on_volume"]:
             image_set["volume"] = {
-                "fixed": os.path.join(patient_dir, pipeline["studies"]["fixed"], "volume.nii.gz"),
-                "moving": os.path.join(patient_dir, pipeline["studies"]["moving"], "volume.nii.gz")
+                "fixed": os.path.join(patient_input, pipeline["studies"]["fixed"], "volume.nii.gz"),
+                "moving": os.path.join(patient_input, pipeline["studies"]["moving"], "volume.nii.gz")
             }
 
         # Apply the transformation on the moving images.
