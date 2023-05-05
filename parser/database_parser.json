@@ -3,7 +3,8 @@
   "arguments": {
     "required": {
       "-i": "Path to the directory where is the dicom database.",
-      "-o": "Path to a directory where to save the nifty database."
+      "-o": "Path to a directory where to save the nifty database.",
+      "-std": "The studies that are going to be extracted e.g. ceMRI,SPECT-CT or ceMRI,PET-CT."
     },
     "optional": {
     }
