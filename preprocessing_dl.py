@@ -1,7 +1,7 @@
 import os
 from shutil import copy
 
-from preprocessing import get_median_spacing, resample, cast_to_float, gaussian_normalize
+from preprocessing import get_median_spacing, resample, cast_to_type, gaussian_normalize
 from utils import create_dir, setup_parser
 
 
@@ -52,7 +52,7 @@ def main():
     label_paths = [os.path.join(training_set["labels"], path) for path in os.listdir(training_set["labels"])]
     resample(label_paths, median_spacing)
     print("Cast images to float...")
-    cast_to_float(image_paths)
+    cast_to_type(image_paths, "float")
     print("Image normalization...")
     gaussian_normalize(image_paths)
 

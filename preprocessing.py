@@ -189,11 +189,9 @@ def create_bounding_boxes(pair):
 
 
 # Cast the voxel type of the images into float.
-def cast_to_float(image_paths):
+def cast_to_type(image_paths, type):
     for img_path in image_paths:
-        run([
-            "clitkImageConvert", "-i", img_path, "-o", img_path, "-t", "float"
-        ])
+        run(["clitkImageConvert", "-i", img_path, "-o", img_path, "-t", type])
 
 
 # Get the statistics of the image.

@@ -74,7 +74,7 @@ def main():
     pipeline = args.pl
 
     df = None
-    results_path = f"{pipeline}.xlsx"
+    results_path = f"results/{pipeline}.xlsx"
 
     exp_path = os.path.join(input_dir, pipeline)
     patients = os.listdir(exp_path)
