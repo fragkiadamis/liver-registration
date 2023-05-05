@@ -7,7 +7,7 @@ from pydicom import read_file
 import nibabel as nib
 import numpy as np
 
-from utils import setup_parser, validate_paths, create_output_structures, rename_instance
+from utils import setup_parser, validate_paths, create_output_structures, rename_instance, create_dir
 
 
 # Return a list with the files of the directory.
@@ -50,7 +50,7 @@ def fix_filenames(parent_dir, study):
 
 # Extract the nifty images from the DICOM series and the RT Structures as well as the transformation parameters from
 # the REG files from the manual registration.
-def extract_from_dicom(study_input, study_output, study):
+def extract_from_dicom(study_input, patient_output):
     # Separate the series, the RT structs and the registration files.
     dicom_series = [x for x in os.listdir(study_input) if "_MR_" in x or "_CT_" in x]
     dicom_rtstr = [x for x in os.listdir(study_input) if "_RTst_" in x]
@@ -67,10 +67,12 @@ def extract_from_dicom(study_input, study_output, study):
 
     # Extract the volume from the series in nifty format.
     volume_path = ""
+    modality = "mri" if "ceMRI" in study_input else "ct"
+
     for series in dicom_series:
         series_path = os.path.join(study_input, series)
         series_files = get_files(series_path)
-        volume_path = os.path.join(study_output, "volume.nii.gz")
+        volume_path = os.path.join(patient_output, f"{modality}_volume.nii.gz")
         print(f"\t\t-Extract volume: {series} ---> {volume_path}")
         run(["clitkDicom2Image", *series_files, "-o", volume_path, "-t", "10"])
 
@@ -78,12 +80,11 @@ def extract_from_dicom(study_input, study_output, study):
     for rt_structure in dicom_rtstr:
         rtstruct_path = os.path.join(study_input, rt_structure)
         rtstruct_file = get_files(rtstruct_path)[0]
-        print(f"\t\t-Extract RT struct: {rtstruct_path} ---> {study_output}")
+        print(f"\t\t-Extract RT struct: {rt_structure} ---> {patient_output}")
         run(
             ["clitkDicomRTStruct2Image", "-i", rtstruct_file, "-j", volume_path,
-             "-o", f"{study_output}/", "--niigz", "-t", "10"]
+             "-o", f"{patient_output}/{modality}_", "--niigz", "-t", "10"]
         )
-        fix_filenames(study_output, study)
 
     # TODO: Make sure that the correct information is being extracted.
     for registration in dicom_reg:
@@ -162,29 +163,29 @@ def main():
     dir_name = os.path.dirname(__file__)
     args = setup_parser(f"{dir_name}/parser/database_parser.json")
     input_dir = os.path.join(dir_name, args.i)
-    output_dir = os.path.join(dir_name, args.o)
+    output_dir = create_dir(dir_name, args.o)
+    studies = args.std.split(",")
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
 
-    # Create the output respective structures.
-    create_output_structures(input_dir, output_dir, depth=2)
-
     # For each patient of the dataset.
     for patient in os.listdir(input_dir):
         print(f"\n-Extracting patient: {patient}")
-        patient_input = os.path.join(dir_name, input_dir, patient)
-        patient_output = os.path.join(dir_name, output_dir, patient)
+        patient_input = os.path.join(input_dir, patient)
+        patient_output = create_dir(output_dir, patient)
 
         # For each study of the patient (ceMRI, SPECT-CT, PET-CT).
         for study in os.listdir(patient_input):
+            if study not in studies:
+                continue
+
             print(f"\t-Study: {study}")
             study_input = os.path.join(patient_input, study)
-            study_output = os.path.join(patient_output, study)
-            extract_from_dicom(study_input, study_output, study)
+            extract_from_dicom(study_input, patient_output)
 
-    # Make a check to handle any possible duplicate data.
-    check_for_duplicates(output_dir, os.listdir(output_dir))
+    # # Make a check to handle any possible duplicate data.
+    # check_for_duplicates(output_dir, os.listdir(output_dir))
 
 
 # Use this file as a script and run it.
