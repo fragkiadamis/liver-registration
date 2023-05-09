@@ -4,7 +4,7 @@
   "registration_steps": [
     {
       "name": "01 Rigid KS",
-      "images": {"fixed": "ct_liver", "moving": "mri_liver"},
+      "images": {"fixed": "ct_auto_generated_liver", "moving": "mri_liver"},
       "parameters": "parameters/Rigid_KS.txt",
       "def_field": 0
     },
