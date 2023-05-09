@@ -152,6 +152,7 @@ def main():
             "moving": os.path.join(patient_input, "mri_tumor.nii.gz")
         }
     }
+
     print(f"\t-Calculating Metrics.")
     for mask in evaluation_masks:
         results[mask] = {
@@ -175,7 +176,7 @@ def main():
         if "masks" in step:
             masks = {
                 "fixed": os.path.join(patient_input, f"{step['masks']['fixed']}.nii.gz"),
-                "moving": os.path.join(patient_input, f"{step['masks']['fixed']}.nii.gz")
+                "moving": os.path.join(patient_input, f"{step['masks']['moving']}.nii.gz")
             }
 
         parameters_file, transform_name = os.path.join(dir_name, step["parameters"]), step["name"]
