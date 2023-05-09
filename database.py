@@ -130,7 +130,7 @@ def add_segmentations(segmentations, volume_path, modality, patient_dir):
 def extract_from_dicom(study_input, patient_output):
     # Before proceeding, Rename directories and files to avoid long names.
     # Long names might cause problems with the windows command prompt.
-    # rename_dicom_structure(study_input)
+    rename_dicom_structure(study_input)
 
     dicom_series = [x for x in os.listdir(study_input) if x == "MR" or x == "CT"]
     dicom_rtstr = [x for x in os.listdir(study_input) if x == "RTst"]
