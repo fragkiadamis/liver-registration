@@ -48,29 +48,6 @@ def delete_dir(directory):
         rmtree(directory)
 
 
-# Create the respective output structures 2 levels deep.
-def create_output_structures(input_dir, output_dir, depth=2, identical=False):
-    # Reset the output directory.
-    delete_dir(output_dir)
-
-    if identical:
-        copytree(input_dir, output_dir)
-        return
-
-    os.mkdir(output_dir)
-    # Create 1st level directories.
-    for item in os.listdir(input_dir):
-        item_output = create_dir(output_dir, item)
-
-        if depth == 1:
-            continue
-
-        # Create 2nd level directories.
-        sub_dir = os.path.join(input_dir, item)
-        for sub_item in os.listdir(sub_dir):
-            create_dir(item_output, sub_item)
-
-
 # Rename a directory or a file
 def rename_instance(working_dir, old_name, new_name):
     old_path = os.path.join(working_dir, old_name)

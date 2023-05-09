@@ -1,11 +1,12 @@
 # Import necessary files and libraries.
 import os
+from shutil import copytree
 from subprocess import run, check_output
 
 import nibabel as nib
 import numpy as np
 
-from utils import setup_parser, validate_paths, create_output_structures
+from utils import setup_parser, validate_paths, delete_dir
 
 
 # Traverse through the given dataset paths and create paired paths between the available modalities.
@@ -18,34 +19,6 @@ def get_pair_paths(parent_dir, studies):
             "tumor": os.path.join(parent_dir, study, "tumor.nii.gz")
         }
     return pair
-
-
-# Create one segmentation by adding all the different segmentations of the specified anatomy.
-def add_segmentations(patient_dir, anatomies):
-    for anatomy in anatomies:
-        for study in anatomies[anatomy]:
-            study_dir = os.path.join(patient_dir, study)
-            segmentations, size, volume_nii = [], [], None
-
-            for file in os.listdir(study_dir):
-                file_path = os.path.join(study_dir, file)
-
-                if "volume" in file:
-                    volume_nii = nib.load(file_path)
-                    size = np.array(volume_nii.get_fdata()).shape
-
-                if anatomy in file:
-                    segmentations.append(file_path)
-
-            total_seg = np.zeros(size)
-            for seg_path in segmentations:
-                segmentation = nib.load(seg_path)
-                total_seg += np.array(segmentation.get_fdata())
-                os.remove(seg_path)
-
-            total_seg = total_seg.astype(np.uint8)
-            total_seg = nib.Nifti1Image(total_seg, header=volume_nii.header, affine=volume_nii.affine)
-            nib.save(total_seg, os.path.join(study_dir, "tumor.nii.gz"))
 
 
 # Get the spacing for each axis of the image.
@@ -94,7 +67,7 @@ def bias_field_correction(mri):
 
 
 # Bring all the images of a patient into the same physical space of the chosen one.
-def resample_moving_2_fixed(pair, like_modality):
+def resample_moving_2_fixed(pair, like_modality="CT"):
     # Get the image that gives the physical space reference.
     like_img = pair[like_modality]["volume"]
     # Get the images of the study that are about to be resampled.
@@ -106,7 +79,13 @@ def resample_moving_2_fixed(pair, like_modality):
     for image in images:
         img_path = pair[study][image]
         print(f"\t\t-Image: {img_path}")
-        run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img])
+        arg_list = ["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img]
+
+        img = img_path.split("/")[-1]
+        if "liver" in img or "tumor" in img:
+            arg_list.append("--interp=0")
+
+        run(arg_list)
 
 
 # Change the spacing of the images in the list.
@@ -220,51 +199,50 @@ def main():
     args = setup_parser("parser/preprocessing_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = os.path.join(dir_name, args.o)
-    ct_study = args.std if args.std else "SPECT-CT"
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
 
     # Create the respective output structures. Those will be used for registration.
-    create_output_structures(input_dir, output_dir, identical=True)
-
-    # Manually add the patients in this dictionary that have fragmented segmentations, in order to be added together
-    # and have one segmentation file.
-    sparse_seg = {
-        "JohnDoe_ANON28177": {"tumor": ["ceMRI", "SPECT-CT"]},
-        "JohnDoe_ANON39011": {"tumor": ["ceMRI"]},
-        "JohnDoe_ANON55098": {"tumor": ["ceMRI", "SPECT-CT"]},
-        "JohnDoe_ANON61677": {"tumor": ["ceMRI"]}
-    }
+    delete_dir(output_dir)
+    copytree(input_dir, output_dir)
 
     # Preprocessing for conventional registration usage.
     for patient in os.listdir(output_dir):
         patient_dir = os.path.join(output_dir, patient)
-        studies_dir = [study for study in os.listdir(patient_dir) if study == "ceMRI" or study == ct_study]
 
-        pair = get_pair_paths(patient_dir, studies_dir)
+        pairs = {
+            "CT": {
+                "volume": os.path.join(patient_dir, "ct_volume.nii.gz"),
+                "liver": os.path.join(patient_dir, "ct_liver.nii.gz"),
+                "tumor": os.path.join(patient_dir, "ct_tumor.nii.gz")
+            },
+            "MRI": {
+                "volume": os.path.join(patient_dir, "mri_volume.nii.gz"),
+                "liver": os.path.join(patient_dir, "mri_liver.nii.gz"),
+                "tumor": os.path.join(patient_dir, "mri_tumor.nii.gz")
+            }
+        }
+
         fixed_images = [
             item for item in [
-                pair[ct_study]["volume"],
-                pair[ct_study]["liver"],
-                pair[ct_study]["tumor"]
+                pairs["CT"]["volume"],
+                pairs["CT"]["liver"],
+                pairs["CT"]["tumor"]
             ]
         ]
 
-        if patient in sparse_seg:
-            print(f"Adding segmentations for patient {patient}")
-            add_segmentations(patient_dir, sparse_seg[patient])
         print(f"-Bias field correction for patient: {patient}")
-        bias_field_correction(pair["MRI"]["volume"])
+        bias_field_correction(pairs["MRI"]["volume"])
         print(f"-Set Spacing for patient: {patient}")
         # spacing = find_minimum_spacing(pair["CT"]["volume"], pair["MRI"]["volume"])
         resample(fixed_images, (1, 1, 1))
         # print(f"\n-Cropping for patient: {patient}")
         # crop(pair)
         print(f"-Resampling for patient: {patient}")
-        resample_moving_2_fixed(pair, ct_study)
+        resample_moving_2_fixed(pairs)
         print(f"-Create boundary boxes for patient: {patient}")
-        create_bounding_boxes(pair)
+        create_bounding_boxes(pairs)
         print()
 
 

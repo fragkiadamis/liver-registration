@@ -11,26 +11,6 @@ from scipy.spatial.distance import directed_hausdorff
 from utils import setup_parser, validate_paths, ConsoleColors, create_dir, rename_instance, delete_dir
 
 
-def get_mask_paths(patient, studies, masks):
-    mask_pair = {}
-    for mask in masks:
-        mask_pair[mask] = {
-            "fixed": os.path.join(patient, studies["fixed"], f"{mask}.nii.gz"),
-            "moving": os.path.join(patient, studies["moving"], f"{mask}.nii.gz")
-        }
-
-    return mask_pair
-
-
-# Return into a dictionary the fixed and moving paths
-def get_image_paths(patient_input, studies, images):
-    return {
-        "fixed": os.path.join(patient_input, studies["fixed"], f"{images['fixed']}.nii.gz"),
-        "moving": os.path.join(patient_input, studies["moving"], f"{images['moving']}.nii.gz")
-        if "moving" in images else ""
-    }
-
-
 # Open file and edit the bspline interpolation order.
 def change_transform_file(file_path, prop, values):
     # Read the transformation file and replace the line that refers to the interpolator order
@@ -162,7 +142,16 @@ def main():
     print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}.{ConsoleColors.END}")
 
     results = {}
-    evaluation_masks = get_mask_paths(patient_input, pipeline["studies"], pipeline["evaluate_on"])
+    evaluation_masks = {
+        "liver": {
+            "fixed": os.path.join(patient_input, "ct_liver.nii.gz"),
+            "moving": os.path.join(patient_input, "mri_liver.nii.gz")
+        },
+        "tumor": {
+            "fixed": os.path.join(patient_input, "ct_tumor.nii.gz"),
+            "moving": os.path.join(patient_input, "mri_tumor.nii.gz")
+        }
+    }
     print(f"\t-Calculating Metrics.")
     for mask in evaluation_masks:
         results[mask] = {
@@ -178,8 +167,16 @@ def main():
     registration = None
     for step in pipeline["registration_steps"]:
         # Get transform's properties.
-        images = get_image_paths(patient_input, pipeline["studies"], step["images"])
-        masks = get_image_paths(patient_input, pipeline["studies"], step["masks"]) if "masks" in step else None
+        images = {
+            "fixed": os.path.join(patient_input, f"{step['images']['fixed']}.nii.gz"),
+            "moving": os.path.join(patient_input, f"{step['images']['moving']}.nii.gz")
+        }
+        masks = None
+        if "masks" in step:
+            masks = {
+                "fixed": os.path.join(patient_input, f"{step['masks']['fixed']}.nii.gz"),
+                "moving": os.path.join(patient_input, f"{step['masks']['fixed']}.nii.gz")
+            }
 
         parameters_file, transform_name = os.path.join(dir_name, step["parameters"]), step["name"]
 
@@ -200,8 +197,8 @@ def main():
         image_set = deepcopy(evaluation_masks)
         if pipeline["apply_on_volume"]:
             image_set["volume"] = {
-                "fixed": os.path.join(patient_input, pipeline["studies"]["fixed"], "volume.nii.gz"),
-                "moving": os.path.join(patient_input, pipeline["studies"]["moving"], "volume.nii.gz")
+                "fixed": os.path.join(patient_input, "ct_volume.nii.gz"),
+                "moving": os.path.join(patient_input, "mri_volume.nii.gz")
             }
 
         # Apply the transformation on the moving images.
