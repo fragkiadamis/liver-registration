@@ -1,7 +1,6 @@
 # Import necessary files and libraries.
 import json
 import os
-from copy import deepcopy
 from subprocess import check_output, CalledProcessError
 
 import nibabel as nib
@@ -141,17 +140,13 @@ def main():
     print(f"{ConsoleColors.HEADER}Pipeline: {pipeline['name']}{ConsoleColors.END}")
     print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}.{ConsoleColors.END}")
 
-    results = {}
-    evaluation_masks = {
-        "liver": {
-            "fixed": os.path.join(patient_input, pipeline["evaluate_on"][0]),
-            "moving": os.path.join(patient_input, "mri_liver.nii.gz")
-        },
-        "tumor": {
-            "fixed": os.path.join(patient_input, pipeline["evaluate_on"][1]),
-            "moving": os.path.join(patient_input, "mri_tumor.nii.gz")
-        }
-    }
+    results, evaluation_masks = {}, {}
+    evaluation_masks.update({
+        img: {
+            "fixed": os.path.join(patient_input, f"{pipeline['studies']['fixed']}_{img}.nii.gz"),
+            "moving": os.path.join(patient_input, f"{pipeline['studies']['moving']}_{img}.nii.gz")
+        } for img in pipeline["evaluate"]
+    })
 
     print(f"\t-Calculating Metrics.")
     for mask in evaluation_masks:
@@ -168,20 +163,15 @@ def main():
     registration = None
     for step in pipeline["registration_steps"]:
         # Get transform's properties.
-        images = {
-            "fixed": os.path.join(patient_input, f"{step['images']['fixed']}.nii.gz"),
-            "moving": os.path.join(patient_input, f"{step['images']['moving']}.nii.gz")
-        }
-        masks = None
-        if "masks" in step:
-            masks = {
-                "fixed": os.path.join(patient_input, f"{step['masks']['fixed']}.nii.gz"),
-                "moving": os.path.join(patient_input, f"{step['masks']['moving']}.nii.gz")
-            }
+        images, masks = {
+            "fixed": os.path.join(patient_input, step["images"]["fixed"]),
+            "moving": os.path.join(patient_input, step["images"]["moving"])
+        }, {
+            "fixed": os.path.join(patient_input, step["masks"]["fixed"]),
+            "moving": os.path.join(patient_input, step["masks"]["moving"])
+        } if "masks" in step else None
 
         parameters_file, transform_name = os.path.join(dir_name, step["parameters"]), step["name"]
-
-        # Create current transform's output.
         transform_output = create_dir(patient_output, transform_name)
 
         # Perform the registration, which will return a transformation file. This transformation will be used in
@@ -197,11 +187,11 @@ def main():
         # where all the registrations are done only between masks and no volumes.
 
         # Apply the transformation on the moving images.
-        print(f"\t-Apply transform to masks.")
+        print(f"\t-Apply transform.")
         apply_on = [os.path.join(patient_input, x) for x in step["apply_on"]]
         apply_transform(registration, apply_on, transform_output, step["def_field"])
-        evaluation_masks["liver"]["moving"] = os.path.join(transform_output, "mri_liver_reg.nii.gz")
-        evaluation_masks["tumor"]["moving"] = os.path.join(transform_output, "mri_tumor_reg.nii.gz")
+        for anatomy in evaluation_masks:
+            evaluation_masks[anatomy]["moving"] = os.path.join(transform_output, f"mri_{anatomy}_reg.nii.gz")
 
         print(f"\t-Calculating Metrics.")
         for mask in evaluation_masks:
