@@ -3,19 +3,22 @@
   "studies": {"fixed": "SPECT-CT", "moving": "ceMRI"},
   "registration_steps": [
     {
-      "name": "01 Rigid KS",
+      "name": "01_Rigid_KS",
       "images": {"fixed": "ct_auto_generated_liver", "moving": "mri_liver"},
       "parameters": "parameters/Rigid_KS.txt",
-      "def_field": 0
+      "def_field": 0,
+      "result": "mri_liver_reg",
+      "apply_on": ["mri_volume.nii.gz", "mri_tumor.nii.gz"]
     },
     {
-      "name": "02 B-Spline MI",
+      "name": "02_B-Spline_MI",
       "images": {"fixed": "ct_volume", "moving": "mri_volume"},
       "masks": {"fixed": "ct_liver_bb", "moving": "mri_liver_bb"},
       "parameters": "parameters/B-spline_MI.txt",
-      "def_field": 0
+      "def_field": 0,
+      "result": "mri_volume_reg",
+      "apply_on": ["mri_liver.nii.gz", "mri_tumor.nii.gz"]
     }
   ],
-  "evaluate_on": ["liver", "tumor"],
-  "apply_on_volume": 0
+  "evaluate_on": ["ct_liver.nii.gz", "ct_tumor.nii.gz"]
 }

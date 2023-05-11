@@ -34,28 +34,27 @@ def change_transform_file(file_path, prop, values):
 
 # Apply the transformation parameters to the masks.
 def apply_transform(transform_file, images, transformation_dir, def_field):
-    for img in images:
-        if img != "volume":
+    for img_path in images:
+        if "volume" not in img_path:
             # Change the bspline interpolation order from 3 to 0 to apply the transformation to the binary mask.
             change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "3", "new": "0"})
 
         # Set the transformix arguments.
-        trx_args = ["-in", images[img]["moving"], "-out", transformation_dir, "-tp", transform_file]
+        trx_args = ["-in", img_path, "-out", transformation_dir, "-tp", transform_file]
         if def_field:
             trx_args.extend(["-def", "all"])
 
         # Apply transformation.
         check_output(["transformix", *trx_args])
-        images[img]["moving"] = rename_instance(transformation_dir, "result.nii.gz", f"{img}_result.nii.gz")
+        filename = img_path.split("/")[-1].split(".")[0]
+        rename_instance(transformation_dir, "result.nii.gz", f"{filename}_reg.nii.gz")
 
     # Reset bspline interpolation order to 3. If it's not changed, nothing is going to happen.
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "0", "new": "3"})
 
-    return images
-
 
 # Register the input pair using elastix and the defined parameters file.
-def elastix_cli(images, masks, parameters, output, t0=None):
+def elastix_cli(images, masks, parameters, output, filename, t0=None):
     # Create elastix argument list.
     elx_args = ["-f", images["fixed"], "-m", images["moving"], "-out", output, "-p", parameters, "-priority", "high"]
 
@@ -73,6 +72,7 @@ def elastix_cli(images, masks, parameters, output, t0=None):
     try:
         # Perform registration, rename the resulted image and return the transformation.
         check_output(["elastix", *elx_args])
+        rename_instance(output, "result.0.nii.gz", f"{filename}.nii.gz")
         return os.path.join(output, "TransformParameters.0.txt")
     except CalledProcessError as e:
         # Catch possible error
@@ -144,11 +144,11 @@ def main():
     results = {}
     evaluation_masks = {
         "liver": {
-            "fixed": os.path.join(patient_input, "ct_liver.nii.gz"),
+            "fixed": os.path.join(patient_input, pipeline["evaluate_on"][0]),
             "moving": os.path.join(patient_input, "mri_liver.nii.gz")
         },
         "tumor": {
-            "fixed": os.path.join(patient_input, "ct_tumor.nii.gz"),
+            "fixed": os.path.join(patient_input, pipeline["evaluate_on"][1]),
             "moving": os.path.join(patient_input, "mri_tumor.nii.gz")
         }
     }
@@ -187,7 +187,7 @@ def main():
         # Perform the registration, which will return a transformation file. This transformation will be used in
         # the next registration step of the pipeline as initial transform "t0".
         print(f"\t-Transform: {transform_name} on {step['images']['moving']}.")
-        registration = elastix_cli(images, masks, parameters_file, transform_output, registration)
+        registration = elastix_cli(images, masks, parameters_file, transform_output, step["result"], registration)
 
         # In case of failure to finish the registration process, continue to the next patient.
         if registration == -1:
@@ -195,24 +195,18 @@ def main():
 
         # If it's defined in the pipeline, apply the transform to the volume too. This is necessary for the cases
         # where all the registrations are done only between masks and no volumes.
-        image_set = deepcopy(evaluation_masks)
-        if pipeline["apply_on_volume"]:
-            image_set["volume"] = {
-                "fixed": os.path.join(patient_input, "ct_volume.nii.gz"),
-                "moving": os.path.join(patient_input, "mri_volume.nii.gz")
-            }
 
         # Apply the transformation on the moving images.
         print(f"\t-Apply transform to masks.")
-        transformed = apply_transform(registration, image_set, transform_output, step["def_field"])
-
-        # Recalculate dice index only to transformed masks.
-        transformed_masks = {x: transformed[x] for x in transformed if x != "volume"}
+        apply_on = [os.path.join(patient_input, x) for x in step["apply_on"]]
+        apply_transform(registration, apply_on, transform_output, step["def_field"])
+        evaluation_masks["liver"]["moving"] = os.path.join(transform_output, "mri_liver_reg.nii.gz")
+        evaluation_masks["tumor"]["moving"] = os.path.join(transform_output, "mri_tumor_reg.nii.gz")
 
         print(f"\t-Calculating Metrics.")
         for mask in evaluation_masks:
             results[mask].update({
-                transform_name: calculate_metrics(transformed_masks[mask]["fixed"], transformed_masks[mask]["moving"])
+                transform_name: calculate_metrics(evaluation_masks[mask]["fixed"], evaluation_masks[mask]["moving"])
             })
             print(f"\t\t-{mask}: {results[mask]}.")
 
