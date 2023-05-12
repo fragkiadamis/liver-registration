@@ -6,9 +6,9 @@ echo "Starting registration job submission."
 
 # Setup the project's paths.
 PROJECT_DIR="${WORKDIR}/liver-baseline-registration"
-INPUT_DIR="${PROJECT_DIR}/data/nifty_iso"
+INPUT_DIR="${PROJECT_DIR}/data/mri_spect_nii_iso"
 OUTPUT_DIR="${PROJECT_DIR}/data/elastix"
-PIPELINE="${PROJECT_DIR}/pipelines/exp3.json"
+PIPELINE="${PROJECT_DIR}/pipelines/baseline_auto_ct_seg.json"
 
 # For each patient submit a registration job.
 for PATIENT_DIR in $INPUT_DIR/*

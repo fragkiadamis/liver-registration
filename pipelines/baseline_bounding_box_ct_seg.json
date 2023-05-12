@@ -1,0 +1,24 @@
+{
+  "name": "baseline_bounding_box_ct_seg",
+  "studies": {"fixed": "ct", "moving": "mri"},
+  "registration_steps": [
+    {
+      "name": "01_Affine_KS",
+      "images": {"fixed": "ct_liver_bb.nii.gz", "moving": "mri_liver_bb.nii.gz"},
+      "parameters": "parameters/Affine_KS.txt",
+      "def_field": 0,
+      "result": "mri_liver_reg",
+      "apply_on": ["mri_volume.nii.gz", "mri_tumor.nii.gz"]
+    },
+    {
+      "name": "02_B-Spline_MI",
+      "images": {"fixed": "ct_volume.nii.gz", "moving": "mri_volume.nii.gz"},
+      "masks": {"fixed": "ct_liver_bb.nii.gz", "moving": "mri_liver_bb.nii.gz"},
+      "parameters": "parameters/B-spline_MI.txt",
+      "def_field": 0,
+      "result": "mri_volume_reg",
+      "apply_on": ["mri_liver.nii.gz", "mri_tumor.nii.gz"]
+    }
+  ],
+  "evaluate": ["liver", "tumor"]
+}
