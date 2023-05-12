@@ -4,6 +4,8 @@
 
 #$ -o /work/icmub/af469853/liver-baseline-registration/logs/registration_output.out
 
+#$ -N $4
+
 # Setup the project's paths.
 PROJECT_DIR="${WORKDIR}/liver-baseline-registration"
 
