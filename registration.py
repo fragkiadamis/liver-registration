@@ -190,8 +190,8 @@ def main():
         print(f"\t-Apply transform.")
         apply_on = [os.path.join(patient_input, x) for x in step["apply_on"]]
         apply_transform(registration, apply_on, transform_output, step["def_field"])
-        for anatomy in evaluation_masks:
-            evaluation_masks[anatomy]["moving"] = os.path.join(transform_output, f"mri_{anatomy}_reg.nii.gz")
+        for mask in evaluation_masks:
+            evaluation_masks[mask]["moving"] = os.path.join(transform_output, f"mri_{mask}_reg.nii.gz")
 
         print(f"\t-Calculating Metrics.")
         for mask in evaluation_masks:
