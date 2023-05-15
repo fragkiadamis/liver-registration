@@ -21,8 +21,8 @@ from monai.transforms import (
 from monai.utils import set_determinism, first
 
 print_config()
-data_dir = "data/dl"
-
+dir_name = os.path.dirname(__file__)
+data_dir = os.path.join(dir_name, "data", "dl")
 data_dicts = [
     {
         "fixed_image": os.path.join(data_dir, f"images/{patient}_fixed.nii.gz"),
@@ -151,7 +151,7 @@ def forward(batch_data, model):
     return ddf, pred_image, pred_label
 
 
-max_epochs = 5
+max_epochs = 2000
 val_interval = 1
 best_metric = -1
 best_metric_epoch = -1
