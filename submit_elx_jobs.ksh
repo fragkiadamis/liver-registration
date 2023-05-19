@@ -32,3 +32,10 @@ do
 done
 
 echo "Registration job submission ended!"
+
+QSTAT_HEADER=2                                      # Two lines is the header of the qstat output
+QSTAT_LINES=$(qstat | wc -l)                        # Take the total lines of the qstat output
+TOTAL_JOBS=$(( ${QSTAT_LINES}-${QSTAT_HEADER} ))    # Take the number of lines minus the number of the header lines
+
+# Log qstat and the number of the jobs submitted.
+qstat ; echo $TOTAL_JOBS

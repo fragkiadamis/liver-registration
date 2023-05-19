@@ -1,10 +1,7 @@
 import os
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from torch.nn import MSELoss
-import monai
-from monai.apps import download_url
 from monai.config import print_config
 from monai.data import DataLoader, Dataset, CacheDataset
 from monai.losses import BendingEnergyLoss, MultiScaleLoss, DiceLoss
@@ -14,13 +11,12 @@ from monai.networks.nets import LocalNet
 from monai.transforms import (
     Compose,
     LoadImaged,
-    RandAffined,
-    Resized,
     ScaleIntensityRanged,
 )
 from monai.utils import set_determinism, first
 
 print_config()
+
 dir_name = os.path.dirname(__file__)
 data_dir = os.path.join(dir_name, "data", "dl")
 data_dicts = [
@@ -44,18 +40,13 @@ train_transforms = Compose(
             keys=["fixed_image", "moving_image"],
             a_min=-285,
             a_max=3770,
-            b_min=-0.5,
-            b_max=0.5,
+            b_min=0.0,
+            b_max=1.0,
             clip=True,
-        ),
-        Resized(
-            keys=["fixed_image", "moving_image", "fixed_label", "moving_label"],
-            mode=("trilinear", "trilinear", "nearest", "nearest"),
-            align_corners=(True, True, None, None),
-            spatial_size=(96, 96, 104),
         ),
     ]
 )
+
 val_transforms = Compose(
     [
         LoadImaged(keys=["fixed_image", "moving_image", "fixed_label", "moving_label"], ensure_channel_first=True),
@@ -63,15 +54,9 @@ val_transforms = Compose(
             keys=["fixed_image", "moving_image"],
             a_min=-285,
             a_max=3770,
-            b_min=-0.5,
-            b_max=0.5,
+            b_min=0.0,
+            b_max=1.0,
             clip=True,
-        ),
-        Resized(
-            keys=["fixed_image", "moving_image", "fixed_label", "moving_label"],
-            mode=("trilinear", "trilinear", "nearest", "nearest"),
-            align_corners=(True, True, None, None),
-            spatial_size=(96, 96, 104),
         ),
     ]
 )
@@ -101,9 +86,7 @@ plt.imshow(fixed_image[:, :, 50], cmap="gray")
 plt.subplot(1, 4, 4)
 plt.title("fixed_label")
 plt.imshow(fixed_label[:, :, 50])
-
-plt.show()
-plt.show()
+plt.savefig('initial.png')
 
 train_ds = CacheDataset(data=train_files, transform=train_transforms, cache_rate=1.0, num_workers=4)
 # train_ds = monai.data.Dataset(data=train_files, transform=train_transforms)
@@ -130,7 +113,7 @@ model = LocalNet(
 warp_layer = Warp().to(device)
 image_loss = MSELoss()
 label_loss = DiceLoss()
-# label_loss = MultiScaleLoss(label_loss, scales=[0, 1, 2, 4, 8, 16])
+label_loss = MultiScaleLoss(label_loss, scales=[0, 1, 2, 4, 8, 16])
 regularization = BendingEnergyLoss()
 optimizer = torch.optim.Adam(model.parameters(), 1e-5)
 dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
@@ -151,7 +134,7 @@ def forward(batch_data, model):
     return ddf, pred_image, pred_label
 
 
-max_epochs = 2000
+max_epochs = 50
 val_interval = 1
 best_metric = -1
 best_metric_epoch = -1
@@ -223,47 +206,4 @@ plt.title("Val Mean Dice")
 x = [val_interval * (i + 1) for i in range(len(metric_values))]
 y = metric_values
 plt.xlabel("epoch")
-plt.plot(x, y)
-plt.show()
-
-resource = "https://github.com/Project-MONAI/MONAI-extra-test-data/releases/download/0.8.1/pair_lung_ct.pth"
-dst = f"{data_dir}/pretrained_weight.pth"
-download_url(resource, dst)
-model.load_state_dict(torch.load(dst))
-
-model.eval()
-with torch.no_grad():
-    for i, val_data in enumerate(val_loader):
-        if i > 2:
-            break
-        val_ddf, val_pred_image, val_pred_label = forward(val_data, model)
-        val_pred_image = val_pred_image.cpu().numpy()[0, 0].transpose((1, 0, 2))
-        val_pred_label = val_pred_label.cpu().numpy()[0, 0].transpose((1, 0, 2))
-        val_moving_image = val_data["moving_image"].cpu().numpy()[0, 0].transpose((1, 0, 2))
-        val_moving_label = val_data["moving_label"].cpu().numpy()[0, 0].transpose((1, 0, 2))
-        val_fixed_image = val_data["fixed_image"].cpu().numpy()[0, 0].transpose((1, 0, 2))
-        val_fixed_label = val_data["fixed_label"].cpu().numpy()[0, 0].transpose((1, 0, 2))
-
-        for depth in range(10):
-            depth = depth * 10
-            # plot the slice [:, :, 80]
-            plt.figure("check", (18, 6))
-            plt.subplot(1, 6, 1)
-            plt.title(f"moving_image {i} d={depth}")
-            plt.imshow(val_moving_image[:, :, depth], cmap="gray")
-            plt.subplot(1, 6, 2)
-            plt.title(f"moving_label {i} d={depth}")
-            plt.imshow(val_moving_label[:, :, depth])
-            plt.subplot(1, 6, 3)
-            plt.title(f"fixed_image {i} d={depth}")
-            plt.imshow(val_fixed_image[:, :, depth], cmap="gray")
-            plt.subplot(1, 6, 4)
-            plt.title(f"fixed_label {i} d={depth}")
-            plt.imshow(val_fixed_label[:, :, depth])
-            plt.subplot(1, 6, 5)
-            plt.title(f"pred_image {i} d={depth}")
-            plt.imshow(val_pred_image[:, :, depth], cmap="gray")
-            plt.subplot(1, 6, 6)
-            plt.title(f"pred_label {i} d={depth}")
-            plt.imshow(val_pred_label[:, :, depth])
-            plt.show()
+plt.savefig('loss.png')
