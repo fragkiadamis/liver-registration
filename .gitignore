@@ -4,6 +4,7 @@
 .venv
 venv/
 ENV/
+wandb
 
 # local data
 data

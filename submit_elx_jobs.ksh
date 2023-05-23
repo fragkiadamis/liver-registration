@@ -19,12 +19,14 @@ do
     PATIENT_ID=$(echo $PATIENT | sed 's/[A-Za-z._]//g')
 
     # Create the file to be executed on the cluster
-    echo "#!/bin/ksh" >> reg_job.ksh
-    echo "#$ -q batch" >> reg_job.ksh
-    echo "#$ -o ${PROJECT_DIR}/logs/elx_registration.out" >> reg_job.ksh
-    echo "#$ -N p$PATIENT_ID" >> reg_job.ksh
-    echo "source ${VENV}" >> reg_job.ksh
-    echo "python ${PROJECT_DIR}/registration.py -i ${INPUT_DIR} -o ${OUTPUT_DIR} -p ${PATIENT} -pl ${PIPELINE}" >> reg_job.ksh
+    {
+        echo "#!/bin/ksh"
+        echo "#$ -q batch"
+        echo "#$ -o ${PROJECT_DIR}/logs/elx_registration.out"
+        echo "#$ -N p$PATIENT_ID"
+        echo "source ${VENV}"
+        echo "python ${PROJECT_DIR}/registration.py -i ${INPUT_DIR} -o ${OUTPUT_DIR} -p ${PATIENT} -pl ${PIPELINE}"
+    } >> reg_job.ksh
 
     # Submit the file in the queue and delete it after
     qsub reg_job.ksh
