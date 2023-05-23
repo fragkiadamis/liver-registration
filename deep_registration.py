@@ -114,7 +114,7 @@ def main():
     epoch_loss_values, metric_values = [], []
 
     for epoch in range(max_epochs):
-        metric = 0
+        metric, loss = 0, 0
         if (epoch + 1) % val_interval == 0 or epoch == 0:
             model.eval()
             with torch.no_grad():
@@ -157,14 +157,15 @@ def main():
             optimizer.step()
             epoch_loss += loss.item()
 
-            # log metrics to wandb
-            wandb.log({"dice": metric, "loss": loss})
-
         epoch_loss /= step
         epoch_loss_values.append(epoch_loss)
         print(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
 
+        # log metrics to wandb
+        wandb.log({"dice": metric, "loss": loss})
+
     print(f"train completed, " f"best_metric: {best_metric:.4f}  " f"at epoch: {best_metric_epoch}")
+    wandb.finish()
 
 
 # Use this file as a script and run it.
