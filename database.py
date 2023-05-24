@@ -238,7 +238,7 @@ def check_for_duplicates(input_dir, patients):
 
 def main():
     dir_name = os.path.dirname(__file__)
-    args = setup_parser(f"{dir_name}/parser/database_parser.json")
+    args = setup_parser(f"{dir_name}/config/database_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = create_dir(dir_name, args.o)
     studies = args.std.split(",")

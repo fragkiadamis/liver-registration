@@ -179,8 +179,8 @@ def get_statistics(img_path):
     output = output.decode()
     output_split = output.split("\n")
 
-    mean = float(output_split[6][5:])
-    std = 1 / float(output_split[9][6:])
+    mean = float(output_split[9][5:])
+    std = 1 / float(output_split[10][3:])
 
     return -mean, std
 
@@ -194,9 +194,15 @@ def gaussian_normalize(image_paths):
             run(["clitkImageArithm", "-i", img_path, "-o", img_path, "-s", str(stat), "-t", str(idx)])
 
 
+# Perform a min/max normalization to the images (0 - 1).
+def min_max_normalization(image_paths):
+    for img_path in image_paths:
+        run(["clitkNormalizeImageFilter", "-i", img_path, "-o", img_path])
+
+
 def main():
     dir_name = os.path.dirname(__file__)
-    args = setup_parser("parser/preprocessing_parser.json")
+    args = setup_parser("config/preprocessing_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = os.path.join(dir_name, args.o)
 

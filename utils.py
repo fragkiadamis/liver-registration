@@ -3,10 +3,10 @@ import json
 import os
 import sys
 
-from shutil import rmtree, copytree
+from shutil import rmtree
 
 
-# Setup the parser and the correct argument messages loaded from the respective json file.
+# Set up the parser and the correct argument messages loaded from the respective json file.
 def setup_parser(json_file):
     with open(json_file, 'r') as messages:
         messages = json.load(messages)

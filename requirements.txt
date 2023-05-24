@@ -8,3 +8,4 @@ torch==2.0.1
 monai==1.1.0
 SimpleITK==2.2.1
 wandb==0.15.3
+tqdm==4.65.0

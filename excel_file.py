@@ -69,7 +69,7 @@ def open_data_frame(patients, evaluation, output):
 
 def main():
     dir_name = os.path.dirname(__file__)
-    args = setup_parser(f"{dir_name}/parser/excel_parser.json")
+    args = setup_parser(f"{dir_name}/config/excel_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     pipeline = args.pl
 

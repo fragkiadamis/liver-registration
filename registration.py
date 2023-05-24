@@ -121,7 +121,7 @@ def calculate_metrics(ground_truth, moving):
 
 def main():
     dir_name = os.path.dirname(__file__)
-    args = setup_parser(f"{dir_name}/parser/elastix_cli_parser.json")
+    args = setup_parser(f"{dir_name}/config/elastix_cli_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = os.path.join(dir_name, args.o)
     pipeline_file = os.path.join(dir_name, args.pl)

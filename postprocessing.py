@@ -84,7 +84,7 @@ def resample_mask(mask, like):
 
 def main():
     dir_name = os.path.dirname(__file__)
-    args = setup_parser("parser/preprocessing_parser.json")
+    args = setup_parser("config/preprocessing_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = create_dir(dir_name, args.o)
 
