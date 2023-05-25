@@ -71,30 +71,28 @@ def forward(sample, model, warp_layer):
     return ddf, y_pred
 
 
-def train(model, train_loader, criterion, optimizer, warp_layer):
+def train(model, train_loader, criterion, optimizer, warp_layer, regularization):
     model.train()
     total_train_loss = 0
 
     # loop over the training set.
     for batch_data in train_loader:
         ddf, y_pred = forward(batch_data, model, warp_layer)
-        train_loss = (criterion(y_pred, batch_data["fixed_label"].to(DEVICE)))
+        train_loss = (
+            100 * criterion(y_pred, batch_data["fixed_label"].to(DEVICE)) +
+            10 * regularization(ddf)
+        )
 
         optimizer.zero_grad()
-        # init_state = model.state_dict()
         train_loss.backward()
-        # after_state = model.state_dict()
         optimizer.step()
-
-        # if are_equal(init_state, after_state):
-        #     print("The models are exactly the same dude.")
 
         total_train_loss += train_loss.item()
 
     return total_train_loss
 
 
-def validate(model, val_loader, criterion, warp_layer):
+def validate(model, val_loader, criterion, warp_layer, regularization, dice_metric):
     model.eval()
     total_val_loss = 0
 
@@ -102,10 +100,18 @@ def validate(model, val_loader, criterion, warp_layer):
     with torch.no_grad():
         for val_sample in val_loader:
             ddf, y_pred = forward(val_sample, model, warp_layer)
-            val_loss = criterion(y_pred, val_sample["fixed_label"].to(DEVICE))
+            fixed_label = val_sample["fixed_label"].to(DEVICE)
+            val_loss = (
+                100 * criterion(y_pred, fixed_label) +
+                10 * regularization(ddf)
+            )
             total_val_loss += val_loss.item()
+            dice_metric(y_pred=y_pred, y=fixed_label)
 
-    return total_val_loss
+        dice_idx = dice_metric.aggregate().item()
+        dice_metric.reset()
+
+    return total_val_loss, dice_idx
 
 
 def main():
@@ -131,8 +137,8 @@ def main():
 
     # Split training and validation sets.
     idx = floor(len(data_dicts) * VAL_SPLIT)
-    # train_files, val_files = data_dicts[:-idx], data_dicts[-idx:]
-    train_files, val_files = data_dicts[:1], data_dicts[1:2]
+    train_files, val_files = data_dicts[:-idx], data_dicts[-idx:]
+    # train_files, val_files = data_dicts[:1], data_dicts[1:2]
 
     set_determinism(seed=0)
 
@@ -160,27 +166,22 @@ def main():
 
     warp_layer = Warp().to(DEVICE)
     criterion = DiceLoss()
-    # regularization = BendingEnergyLoss()
+    regularization = BendingEnergyLoss()
     optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
-    # dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
-
-    history = {"train_loss": [], "val_loss": []}
+    dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
-        train_loss = train(localnet, train_loader, criterion, optimizer, warp_layer)
-        val_loss = validate(localnet, val_loader, criterion, warp_layer)
+        train_loss = train(localnet, train_loader, criterion, optimizer, warp_layer, regularization)
+        val_loss, dice_idx = validate(localnet, val_loader, criterion, warp_layer, regularization, dice_metric)
 
         avg_train_loss = train_loss / train_steps
         avg_val_loss = val_loss / val_steps
 
-        history["train_loss"].append(train_loss)
-        history["val_loss"].append(val_loss)
-
         # print the model training and validation information
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
-        print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}")
-        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss})
+        print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {dice_idx}")
+        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice_index": dice_idx})
 
     end_time = time()
     print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")
