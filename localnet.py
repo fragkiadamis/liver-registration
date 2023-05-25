@@ -7,12 +7,12 @@ from torch.nn import MSELoss
 from tqdm import tqdm
 
 from monai.config import print_config
-from monai.data import DataLoader, CacheDataset, Dataset
+from monai.data import DataLoader, CacheDataset
 from monai.networks.blocks import Warp
 from monai.networks.nets import LocalNet
 from monai.transforms import Compose, LoadImaged, Resized
 from monai.utils import set_determinism
-from monai.losses import DiceLoss, MultiScaleLoss
+from monai.losses import DiceLoss, MultiScaleLoss, BendingEnergyLoss
 from monai.metrics import DiceMetric
 
 from utils import setup_parser, create_dir, validate_paths
@@ -24,7 +24,7 @@ wandb.init(
     project="liver-registration",
     config={
         "architecture": "LocalNet",
-        "epochs": 5,
+        "epochs": NUM_EPOCHS,
     }
 )
 
@@ -58,47 +58,33 @@ def forward(batch_data, model, warp_layer):
     return ddf, pred_image, pred_label
 
 
-def train_model(train_ds, val_ds, train_loader, val_loader):
-    # Create LocalNet, losses and optimizer.
-    localnet = LocalNet(
-        spatial_dims=3,
-        in_channels=2,
-        out_channels=3,
-        num_channel_initial=32,
-        extract_levels=(3,),
-        out_activation=None,
-        out_kernel_initializer="zeros",
-    ).to(DEVICE)
-
-    warp_layer = Warp().to(DEVICE)
-    image_loss = MSELoss()
-    label_loss = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16])
-    optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
-    train_steps = len(train_ds) // BATCH_SIZE
-    val_steps = len(val_ds) // BATCH_SIZE
-    dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
-
+def train_model(
+        model, train_loader, val_loader,
+        warp_layer, warp_layer_l, image_loss, label_loss,
+        regularization, optimizer,
+        train_steps, val_steps, dice_metric,
+):
     print("[INFO] training the network...")
 
     metric_values = []
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
         # Set the model to training mode.
-        localnet.train()
-
-        total_train_loss, total_val_loss = 0, 0
+        model.train()
 
         # loop over the training set
+        total_train_loss, total_val_loss = 0, 0
         for batch_data in train_loader:
             # perform a forward pass and calculate the training loss.
-            ddf, pred_image, pred_label = forward(batch_data, localnet, warp_layer)
+            ddf, pred_image, pred_label = forward(batch_data, model, warp_layer)
             pred_label[pred_label > 1] = 1
 
             fixed_image = batch_data["fixed_image"].to(DEVICE)
             fixed_label = batch_data["fixed_label"].to(DEVICE)
             train_loss = (
                 image_loss(pred_image, fixed_image) +
-                100 * label_loss(pred_label, fixed_label)
+                100 * label_loss(pred_label, fixed_label) +
+                10 * regularization(ddf)
             )
 
             # first, zero out any previously accumulated gradients, then
@@ -113,19 +99,20 @@ def train_model(train_ds, val_ds, train_loader, val_loader):
         # switch off autograd
         with torch.no_grad():
             # Set the model to evaluation mode.
-            localnet.eval()
+            model.eval()
 
             # loop over the validation set
             for val_data in val_loader:
                 # make the predictions and calculate the validation loss
-                ddf, val_pred_image, val_pred_label = forward(val_data, localnet, warp_layer)
+                ddf, val_pred_image, val_pred_label = forward(val_data, model, warp_layer)
                 val_pred_label[val_pred_label > 1] = 1
 
-                val_fixed_image = val_data["fixed_label"].to(DEVICE)
+                val_fixed_image = val_data["fixed_image"].to(DEVICE)
                 val_fixed_label = val_data["fixed_label"].to(DEVICE)
                 val_loss = (
                     image_loss(val_pred_image, val_fixed_image) +
-                    100 * label_loss(val_pred_label, val_fixed_label)
+                    100 * label_loss(val_pred_label, val_fixed_label) +
+                    10 * regularization(ddf)
                 )
                 dice_metric(y_pred=val_pred_label, y=val_fixed_label)
 
@@ -187,8 +174,34 @@ def main():
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
 
+    # Create LocalNet, losses and optimizer.
+    localnet = LocalNet(
+        spatial_dims=3,
+        in_channels=2,
+        out_channels=3,
+        num_channel_initial=32,
+        extract_levels=(3,),
+        out_activation=None,
+        out_kernel_initializer="zeros",
+    ).to(DEVICE)
+
+    warp_layer = Warp().to(DEVICE)
+    warp_layer_l = Warp(mode="nearest").to(DEVICE)
+    image_loss = MSELoss()
+    label_loss = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16])
+    regularization = BendingEnergyLoss()
+    optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
+    train_steps = len(train_ds) // BATCH_SIZE
+    val_steps = len(val_ds) // BATCH_SIZE
+    dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
+
     # Train the LocalNet.
-    train_model(train_ds, val_ds, train_loader, val_loader)
+    train_model(
+        localnet, train_loader, val_loader,
+        warp_layer, warp_layer_l, image_loss, label_loss,
+        regularization, optimizer,
+        train_steps, val_steps, dice_metric,
+    )
 
 
 # Use this file as a script and run it.
