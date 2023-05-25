@@ -1,9 +1,13 @@
 import os
+import sys
 from time import time
 from math import floor
 
-import wandb
+import numpy as np
+from matplotlib import pyplot as plt
 from torch.nn import MSELoss
+
+import wandb
 from tqdm import tqdm
 
 from monai.config import print_config
@@ -12,7 +16,7 @@ from monai.networks.blocks import Warp
 from monai.networks.nets import LocalNet
 from monai.transforms import Compose, LoadImaged, Resized
 from monai.utils import set_determinism
-from monai.losses import DiceLoss, MultiScaleLoss, BendingEnergyLoss
+from monai.losses import BendingEnergyLoss, DiceLoss
 from monai.metrics import DiceMetric
 
 from utils import setup_parser, create_dir, validate_paths
@@ -29,6 +33,19 @@ wandb.init(
 )
 
 
+# Compare the parameters in two models to see if they are the same or not.
+def are_equal(model_1, model_2):
+    parameters_equal = []
+    for (m1p_name, m1_param), (m2p_name, m2_param) in zip(model_1.items(), model_2.items()):
+        equal = torch.equal(m1_param, m2_param)
+        parameters_equal.append(equal)
+
+    # Check if all parameters are equal
+    all_parameters_equal = all(parameters_equal)
+
+    return True if all_parameters_equal else False
+
+
 def transforms():
     return Compose(
         [
@@ -43,99 +60,52 @@ def transforms():
     )
 
 
-def forward(batch_data, model, warp_layer):
-    fixed_image = batch_data["fixed_image"].to(DEVICE)
-    moving_image = batch_data["moving_image"].to(DEVICE)
-    moving_label = batch_data["moving_label"].to(DEVICE)
+def forward(sample, model, warp_layer):
+    x_fixed = sample["fixed_image"].to(DEVICE)
+    x_moving = sample["moving_image"].to(DEVICE)
+    y_moving = sample["moving_label"].to(DEVICE)
 
-    # predict DDF through LocalNet
-    ddf = model(torch.cat((moving_image, fixed_image), dim=1))
+    ddf = model(torch.cat((x_fixed, x_moving), dim=1))
+    y_pred = warp_layer(y_moving, ddf)
 
-    # warp moving image and label with the predicted ddf
-    pred_image = warp_layer(moving_image, ddf)
-    pred_label = warp_layer(moving_label, ddf)
-
-    return ddf, pred_image, pred_label
+    return ddf, y_pred
 
 
-def train_model(
-        model, train_loader, val_loader,
-        warp_layer, warp_layer_l, image_loss, label_loss,
-        regularization, optimizer,
-        train_steps, val_steps, dice_metric,
-):
-    print("[INFO] training the network...")
+def train(model, train_loader, criterion, optimizer, warp_layer):
+    model.train()
+    total_train_loss = 0
 
-    metric_values = []
-    start_time = time()
-    for e in tqdm(range(NUM_EPOCHS)):
-        # Set the model to training mode.
-        model.train()
+    # loop over the training set.
+    for batch_data in train_loader:
+        ddf, y_pred = forward(batch_data, model, warp_layer)
+        train_loss = (criterion(y_pred, batch_data["fixed_label"].to(DEVICE)))
 
-        # loop over the training set
-        total_train_loss, total_val_loss = 0, 0
-        for batch_data in train_loader:
-            # perform a forward pass and calculate the training loss.
-            ddf, pred_image, pred_label = forward(batch_data, model, warp_layer)
-            pred_label[pred_label > 1] = 1
+        optimizer.zero_grad()
+        # init_state = model.state_dict()
+        train_loss.backward()
+        # after_state = model.state_dict()
+        optimizer.step()
 
-            fixed_image = batch_data["fixed_image"].to(DEVICE)
-            fixed_label = batch_data["fixed_label"].to(DEVICE)
-            train_loss = (
-                image_loss(pred_image, fixed_image) +
-                100 * label_loss(pred_label, fixed_label) +
-                10 * regularization(ddf)
-            )
+        # if are_equal(init_state, after_state):
+        #     print("The models are exactly the same dude.")
 
-            # first, zero out any previously accumulated gradients, then
-            # perform backpropagation, and then update model parameters.
-            optimizer.zero_grad()
-            train_loss.backward()
-            optimizer.step()
+        total_train_loss += train_loss.item()
 
-            # add the loss to the total training loss so far.
-            total_train_loss += train_loss.item()
+    return total_train_loss
 
-        # switch off autograd
-        with torch.no_grad():
-            # Set the model to evaluation mode.
-            model.eval()
 
-            # loop over the validation set
-            for val_data in val_loader:
-                # make the predictions and calculate the validation loss
-                ddf, val_pred_image, val_pred_label = forward(val_data, model, warp_layer)
-                val_pred_label[val_pred_label > 1] = 1
+def validate(model, val_loader, criterion, warp_layer):
+    model.eval()
+    total_val_loss = 0
 
-                val_fixed_image = val_data["fixed_image"].to(DEVICE)
-                val_fixed_label = val_data["fixed_label"].to(DEVICE)
-                val_loss = (
-                    image_loss(val_pred_image, val_fixed_image) +
-                    100 * label_loss(val_pred_label, val_fixed_label) +
-                    10 * regularization(ddf)
-                )
-                dice_metric(y_pred=val_pred_label, y=val_fixed_label)
+    # Loop over the validation set.
+    with torch.no_grad():
+        for val_sample in val_loader:
+            ddf, y_pred = forward(val_sample, model, warp_layer)
+            val_loss = criterion(y_pred, val_sample["fixed_label"].to(DEVICE))
+            total_val_loss += val_loss.item()
 
-                # add the loss to the total val loss so far.
-                total_val_loss += val_loss.item()
-
-        metric = dice_metric.aggregate().item()
-        dice_metric.reset()
-        metric_values.append(metric)
-
-        avg_train_loss = total_train_loss / train_steps
-        avg_val_loss = total_val_loss / val_steps
-
-        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "val_dice": metric})
-
-        # print the model training and validation information
-        print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
-        print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice: {metric}")
-
-    # display the total time needed to perform the training
-    end_time = time()
-    print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")
-    wandb.finish()
+    return total_val_loss
 
 
 def main():
@@ -162,7 +132,7 @@ def main():
     # Split training and validation sets.
     idx = floor(len(data_dicts) * VAL_SPLIT)
     # train_files, val_files = data_dicts[:-idx], data_dicts[-idx:]
-    train_files, val_files = data_dicts[:4], data_dicts[4:5]
+    train_files, val_files = data_dicts[:1], data_dicts[1:2]
 
     set_determinism(seed=0)
 
@@ -185,23 +155,36 @@ def main():
         out_kernel_initializer="zeros",
     ).to(DEVICE)
 
-    warp_layer = Warp().to(DEVICE)
-    warp_layer_l = Warp(mode="nearest").to(DEVICE)
-    image_loss = MSELoss()
-    label_loss = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16])
-    regularization = BendingEnergyLoss()
-    optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
     train_steps = len(train_ds) // BATCH_SIZE
     val_steps = len(val_ds) // BATCH_SIZE
-    dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
-    # Train the LocalNet.
-    train_model(
-        localnet, train_loader, val_loader,
-        warp_layer, warp_layer_l, image_loss, label_loss,
-        regularization, optimizer,
-        train_steps, val_steps, dice_metric,
-    )
+    warp_layer = Warp().to(DEVICE)
+    criterion = DiceLoss()
+    # regularization = BendingEnergyLoss()
+    optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
+    # dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
+
+    history = {"train_loss": [], "val_loss": []}
+
+    start_time = time()
+    for e in tqdm(range(NUM_EPOCHS)):
+        train_loss = train(localnet, train_loader, criterion, optimizer, warp_layer)
+        val_loss = validate(localnet, val_loader, criterion, warp_layer)
+
+        avg_train_loss = train_loss / train_steps
+        avg_val_loss = val_loss / val_steps
+
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+
+        # print the model training and validation information
+        print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
+        print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}")
+        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss})
+
+    end_time = time()
+    print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")
+    wandb.finish()
 
 
 # Use this file as a script and run it.
