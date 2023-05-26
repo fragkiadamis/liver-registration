@@ -1,11 +1,6 @@
 import os
-import sys
 from time import time
 from math import floor
-
-import numpy as np
-from matplotlib import pyplot as plt
-from torch.nn import MSELoss
 
 import wandb
 from tqdm import tqdm
@@ -15,7 +10,6 @@ from monai.data import DataLoader, CacheDataset
 from monai.networks.blocks import Warp
 from monai.networks.nets import LocalNet
 from monai.transforms import Compose, LoadImaged, Resized
-from monai.utils import set_determinism
 from monai.losses import BendingEnergyLoss, DiceLoss, MultiScaleLoss
 from monai.metrics import DiceMetric
 
