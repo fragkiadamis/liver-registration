@@ -20,9 +20,12 @@ print_config()
 
 wandb.init(
     project="liver-registration",
+    tags=["deep", "learning", "registration", "LocalNet"],
     config={
         "architecture": "LocalNet",
         "epochs": NUM_EPOCHS,
+        "learning_rate": INIT_LR,
+        "batch_size": BATCH_SIZE
     }
 )
 
@@ -160,6 +163,9 @@ def main():
     optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
+    dice_values = []
+    best_dice = 0
+
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
         train_loss = train(localnet, train_loader, criterion, optimizer, warp_layer, regularization)
@@ -172,6 +178,11 @@ def main():
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
         print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {dice_idx}")
         wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice_index": dice_idx})
+
+        dice_values.append(dice_idx)
+        if dice_idx > best_dice:
+            best_dice = dice_idx
+            torch.save(localnet.state_dict(), os.path.join(output_dir, "localnet.pth"))
 
     end_time = time()
     print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")

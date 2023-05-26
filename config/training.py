@@ -7,7 +7,8 @@ PIN_MEMORY = True if DEVICE == "cuda:0" else False
 
 # initialize learning rate, number of epochs to train for, and the
 # batch size
-INIT_LR = 1e-5
+INIT_LR = 1e-3
+WEIGHT_DECAY = 1e-3
 NUM_EPOCHS = 2000
 BATCH_SIZE = 1
 
