@@ -197,6 +197,7 @@ def gaussian_normalize(image_paths):
 # Perform a min/max normalization to the images (0 - 1).
 def min_max_normalization(image_paths):
     for img_path in image_paths:
+        print(f"Normalising {img_path}")
         run(["clitkNormalizeImageFilter", "-i", img_path, "-o", img_path])
 
 

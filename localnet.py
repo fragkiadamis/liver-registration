@@ -16,7 +16,7 @@ from monai.networks.blocks import Warp
 from monai.networks.nets import LocalNet
 from monai.transforms import Compose, LoadImaged, Resized
 from monai.utils import set_determinism
-from monai.losses import BendingEnergyLoss, DiceLoss
+from monai.losses import BendingEnergyLoss, DiceLoss, MultiScaleLoss
 from monai.metrics import DiceMetric
 
 from utils import setup_parser, create_dir, validate_paths
@@ -78,11 +78,10 @@ def train(model, train_loader, criterion, optimizer, warp_layer, regularization)
     # loop over the training set.
     for batch_data in train_loader:
         ddf, y_pred = forward(batch_data, model, warp_layer)
-        train_loss = (
-            100 * criterion(y_pred, batch_data["fixed_label"].to(DEVICE)) +
-            10 * regularization(ddf)
-        )
+        fixed_label = batch_data["fixed_label"].to(DEVICE)
+        y_pred[y_pred > 1] = 1
 
+        train_loss = criterion(y_pred, fixed_label) + 0.5 * regularization(ddf)
         optimizer.zero_grad()
         train_loss.backward()
         optimizer.step()
@@ -101,10 +100,9 @@ def validate(model, val_loader, criterion, warp_layer, regularization, dice_metr
         for val_sample in val_loader:
             ddf, y_pred = forward(val_sample, model, warp_layer)
             fixed_label = val_sample["fixed_label"].to(DEVICE)
-            val_loss = (
-                100 * criterion(y_pred, fixed_label) +
-                10 * regularization(ddf)
-            )
+            y_pred[y_pred > 1] = 1
+
+            val_loss = criterion(y_pred, fixed_label) + 0.5 * regularization(ddf)
             total_val_loss += val_loss.item()
             dice_metric(y_pred=y_pred, y=fixed_label)
 
@@ -138,9 +136,7 @@ def main():
     # Split training and validation sets.
     idx = floor(len(data_dicts) * VAL_SPLIT)
     train_files, val_files = data_dicts[:-idx], data_dicts[-idx:]
-    # train_files, val_files = data_dicts[:1], data_dicts[1:2]
-
-    set_determinism(seed=0)
+    # train_files, val_files = data_dicts[:5], data_dicts[5:6]
 
     # Cache the transforms of the datasets.
     train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
@@ -165,7 +161,7 @@ def main():
     val_steps = len(val_ds) // BATCH_SIZE
 
     warp_layer = Warp().to(DEVICE)
-    criterion = DiceLoss()
+    criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
     regularization = BendingEnergyLoss()
     optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
