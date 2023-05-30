@@ -107,10 +107,12 @@ def validate(model, val_loader, criterion, warp_layer, regularization, dice_metr
         for val_data in val_loader:
             ddf, y_pred = forward(val_data, model, warp_layer)
             fixed_label = val_data["fixed_label"].to(DEVICE)
-            y_pred[y_pred > 1] = 1
 
             val_loss = criterion(y_pred, fixed_label) + 0.5 * regularization(ddf)
             total_val_loss += val_loss.item()
+
+            y_pred[y_pred > 0.5] = 1
+            y_pred[y_pred <= 0.5] = 0
             dice = dice_metric(y_pred=y_pred, y=fixed_label)
             # print(f"Dice: {dice[0][0]}")
 
@@ -165,7 +167,7 @@ def main():
     train_size = floor(len(data) * TRAIN_SPLIT)
     val_size = train_size + floor(len(data) * VAL_SPLIT)
     train_files, val_files, test_files = data[:train_size], data[train_size:val_size], data[val_size:]
-    # train_files, val_files, test_files = data[:5], data[5:7], data[7:8]
+    # train_files, val_files, test_files = data[:1], data[1:2], data[2:3]
 
     # Cache the transforms of the datasets.
     train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
@@ -192,6 +194,7 @@ def main():
     val_steps = len(val_ds) // BATCH_SIZE
 
     warp_layer = Warp().to(DEVICE)
+    warp_layer_nn = Warp("nearest").to(DEVICE)
     criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
     regularization = BendingEnergyLoss()
     optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
@@ -224,8 +227,7 @@ def main():
     wandb.finish()
 
     start_time = time()
-    warp_layer = Warp("nearest").to(DEVICE)
-    test_dice_avg = inference_model(localnet, test_loader, warp_layer, dice_metric)
+    test_dice_avg = inference_model(localnet, test_loader, warp_layer_nn, dice_metric)
     end_time = time()
     print(f"[INFO] test dice index: {test_dice_avg}")
     print(f"[INFO] total time taken to inference the model: {round((end_time - start_time), 2)} seconds")
