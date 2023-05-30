@@ -3,7 +3,8 @@
   "arguments": {
     "required": {
       "-i": "Path to the training dataset.",
-      "-o": "Path to the models output."
+      "-o": "Path to the models output.",
+      "-n": "Model name."
     },
     "optional": {
     }
