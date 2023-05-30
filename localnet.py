@@ -111,12 +111,13 @@ def validate(model, val_loader, criterion, warp_layer, regularization, dice_metr
 
             val_loss = criterion(y_pred, fixed_label) + 0.5 * regularization(ddf)
             total_val_loss += val_loss.item()
-            dice_metric(y_pred=y_pred, y=fixed_label)
+            dice = dice_metric(y_pred=y_pred, y=fixed_label)
+            # print(f"Dice: {dice[0][0]}")
 
-        dice_idx = dice_metric.aggregate().item()
+        dice_avg = dice_metric.aggregate().item()
         dice_metric.reset()
 
-    return total_val_loss, dice_idx
+    return total_val_loss, dice_avg
 
 
 # Inference the model on the testing data.
@@ -128,12 +129,13 @@ def inference_model(model, test_loader, warp_layer, dice_metric):
         for test_data in test_loader:
             ddf, y_pred = forward(test_data, model, warp_layer)
             fixed_label = test_data["fixed_label"].to(DEVICE)
-            dice_metric(y_pred=y_pred, y=fixed_label)
+            dice = dice_metric(y_pred=y_pred, y=fixed_label)
+            # print(f"Dice: {dice[0][0]}")
 
-        dice_idx = dice_metric.aggregate().item()
+        dice_avg = dice_metric.aggregate().item()
         dice_metric.reset()
 
-    return dice_idx
+    return dice_avg
 
 
 def main():
@@ -201,19 +203,19 @@ def main():
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
         train_loss = train(localnet, train_loader, criterion, optimizer, warp_layer, regularization)
-        val_loss, dice_idx = validate(localnet, val_loader, criterion, warp_layer, regularization, dice_metric)
+        val_loss, val_dice_avg = validate(localnet, val_loader, criterion, warp_layer, regularization, dice_metric)
 
         avg_train_loss = train_loss / train_steps
         avg_val_loss = val_loss / val_steps
 
         # print the model training and validation information
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
-        print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {dice_idx}")
-        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice_index": dice_idx})
+        print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
+        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice_index": val_dice_avg})
 
-        dice_values.append(dice_idx)
-        if dice_idx > best_dice:
-            best_dice = dice_idx
+        dice_values.append(val_dice_avg)
+        if val_dice_avg > best_dice:
+            best_dice = val_dice_avg
             torch.save(localnet.state_dict(), f"{model_path}_best.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
@@ -223,9 +225,9 @@ def main():
 
     start_time = time()
     warp_layer = Warp("nearest").to(DEVICE)
-    dice_idx = inference_model(localnet, test_loader, warp_layer, dice_metric)
+    test_dice_avg = inference_model(localnet, test_loader, warp_layer, dice_metric)
     end_time = time()
-    print(f"[INFO] test dice index: {dice_idx}")
+    print(f"[INFO] test dice index: {test_dice_avg}")
     print(f"[INFO] total time taken to inference the model: {round((end_time - start_time), 2)} seconds")
 
 
