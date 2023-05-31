@@ -1,22 +1,24 @@
 import os
-from time import time
 from math import floor
+from time import time
+from matplotlib import pyplot as plt
 
 import torch
 import wandb
 from tqdm import tqdm
 
 from monai.config import print_config
-from monai.data import DataLoader, CacheDataset
+from monai.apps import download_url
+from monai.data import CacheDataset, DataLoader
+from monai.losses import MultiScaleLoss, BendingEnergyLoss, DiceLoss
+from monai.metrics import DiceMetric
 from monai.networks.blocks import Warp
 from monai.networks.nets import LocalNet
 from monai.transforms import Compose, LoadImaged, Resized
-from monai.losses import BendingEnergyLoss, DiceLoss, MultiScaleLoss
-from monai.metrics import DiceMetric
 
-from utils import setup_parser, create_dir, validate_paths
-from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, \
-    INPUT_IMAGE_DEPTH, DEVICE, VAL_SPLIT, PIN_MEMORY, TRAIN_SPLIT
+from config.training import DEVICE, BATCH_SIZE, PIN_MEMORY, INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, INPUT_IMAGE_DEPTH, \
+    VAL_SPLIT, INIT_LR, NUM_EPOCHS, ARCHITECTURE, TRAIN_SPLIT
+from utils import setup_parser, validate_paths, create_dir
 
 print_config()
 
@@ -30,19 +32,6 @@ wandb.init(
         "batch_size": BATCH_SIZE
     }
 )
-
-
-# Compare the parameters in two models to see if they are the same or not.
-def are_equal(model_1, model_2):
-    parameters_equal = []
-    for (m1p_name, m1_param), (m2p_name, m2_param) in zip(model_1.items(), model_2.items()):
-        equal = torch.equal(m1_param, m2_param)
-        parameters_equal.append(equal)
-
-    # Check if all parameters are equal
-    all_parameters_equal = all(parameters_equal)
-
-    return True if all_parameters_equal else False
 
 
 # Preprocessing transforms.
@@ -120,25 +109,6 @@ def validate(model, val_loader, criterion, warp_layer, regularization, dice_metr
     return total_val_loss, dice_avg
 
 
-# Inference the model on the testing data.
-def inference_model(model, test_loader, warp_layer, dice_metric):
-    model.eval()
-
-    # Loop over the validation set.
-    with torch.no_grad():
-        for test_data in test_loader:
-            ddf, x_pred, y_pred = forward(test_data, model, warp_layer, inference=True)
-            fixed_label = test_data["fixed_label"].to(DEVICE)
-
-            dice = dice_metric(y_pred=y_pred, y=fixed_label)
-            # print(f"Dice: {dice[0][0]}")
-
-        dice_avg = dice_metric.aggregate().item()
-        dice_metric.reset()
-
-    return dice_avg
-
-
 def main():
     dir_name = os.path.dirname(__file__)
     args = setup_parser(f"{dir_name}/config/dl_registration_parser.json")
@@ -149,7 +119,10 @@ def main():
     validate_paths(input_dir, output_dir)
     create_dir(dir_name, output_dir)
 
-    model_path = os.path.join(output_dir, args.n)
+    model_path = os.path.join(output_dir, f"{args.n}.pth")
+
+    resource = "https://github.com/Project-MONAI/MONAI-extra-test-data/releases/download/0.8.1/pair_lung_ct.pth"
+    download_url(resource, model_path)
 
     # Load dataset file paths.
     data = [
@@ -165,18 +138,16 @@ def main():
     # Split training and validation sets.
     train_size = floor(len(data) * TRAIN_SPLIT)
     val_size = train_size + floor(len(data) * VAL_SPLIT)
-    train_files, val_files, test_files = data[:train_size], data[train_size:val_size], data[val_size:]
+    train_files, val_files = data[:train_size], data[train_size:]
     # train_files, val_files, test_files = data[:1], data[1:2], data[2:3]
 
     # Cache the transforms of the datasets.
     train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
     val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
-    test_ds = CacheDataset(data=test_files, transform=transforms(), cache_rate=1.0, num_workers=0)
 
     # Load the datasets.
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
-    test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
 
     # Create LocalNet, losses and optimizer.
     localnet = LocalNet(
@@ -188,6 +159,8 @@ def main():
         out_activation=None,
         out_kernel_initializer="zeros",
     ).to(DEVICE)
+
+    localnet.load_state_dict(torch.load(model_path))
 
     train_steps = len(train_ds) // BATCH_SIZE
     val_steps = len(val_ds) // BATCH_SIZE
@@ -225,13 +198,50 @@ def main():
     print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")
     wandb.finish()
 
-    start_time = time()
-    test_dice_avg = inference_model(localnet, test_loader, warp_layer_nn, dice_metric)
-    end_time = time()
-    print(f"[INFO] test dice index: {test_dice_avg}")
-    print(f"[INFO] total time taken to inference the model: {round((end_time - start_time), 2)} seconds")
+    # localnet.eval()
+    # with torch.no_grad():
+    #     for i, val_data in enumerate(val_loader):
+    #         val_ddf, val_pred_image, val_pred_label = forward(val_data, localnet, warp_layer_nn, inference=True)
+    #         val_fixed_label = val_data["fixed_label"].to(DEVICE)
+    #
+    #         dice = dice_metric(y_pred=val_pred_label, y=val_fixed_label)
+    #         print(f"Dice: {dice[0][0]}")
+    #
+    #         val_pred_image = val_pred_image.cpu().numpy()[0, 0].transpose((1, 0, 2))
+    #         val_pred_label = val_pred_label.cpu().numpy()[0, 0].transpose((1, 0, 2))
+    #         val_moving_image = val_data["moving_image"].cpu().numpy()[0, 0].transpose((1, 0, 2))
+    #         val_moving_label = val_data["moving_label"].cpu().numpy()[0, 0].transpose((1, 0, 2))
+    #         val_fixed_image = val_data["fixed_image"].cpu().numpy()[0, 0].transpose((1, 0, 2))
+    #         val_fixed_label = val_fixed_label.cpu().numpy()[0, 0].transpose((1, 0, 2))
+    #
+    #         # for depth in range(10):
+    #         #     depth = depth * 10
+    #         #     plt.figure("check", (18, 6))
+    #         #     plt.subplot(1, 6, 1)
+    #         #     plt.title(f"moving_image {i} d={depth}")
+    #         #     plt.imshow(val_moving_image[:, :, depth], cmap="gray")
+    #         #     plt.subplot(1, 6, 2)
+    #         #     plt.title(f"moving_label {i} d={depth}")
+    #         #     plt.imshow(val_moving_label[:, :, depth])
+    #         #     plt.subplot(1, 6, 3)
+    #         #     plt.title(f"fixed_image {i} d={depth}")
+    #         #     plt.imshow(val_fixed_image[:, :, depth], cmap="gray")
+    #         #     plt.subplot(1, 6, 4)
+    #         #     plt.title(f"fixed_label {i} d={depth}")
+    #         #     plt.imshow(val_fixed_label[:, :, depth])
+    #         #     plt.subplot(1, 6, 5)
+    #         #     plt.title(f"pred_image {i} d={depth}")
+    #         #     plt.imshow(val_pred_image[:, :, depth], cmap="gray")
+    #         #     plt.subplot(1, 6, 6)
+    #         #     plt.title(f"pred_label {i} d={depth}")
+    #         #     plt.imshow(val_pred_label[:, :, depth])
+    #         #     plt.show()
+    #
+    #     dice_avg = dice_metric.aggregate().item()
+    #     dice_metric.reset()
+    #
+    #     print(dice_avg)
 
 
-# Use this file as a script and run it.
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
