@@ -165,13 +165,11 @@ def main():
     # Split training and validation sets.
     train_size = floor(len(data) * TRAIN_SPLIT)
     train_files, val_files = data[:train_size], data[train_size:]
-    # train_files, val_files, test_files = data[:1], data[1:2], data[2:3]
+    # train_files, val_files = data[:1], data[1:2]
 
     # Cache the transforms of the datasets.
-    # train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
-    train_ds = Dataset(data=train_files, transform=transforms())
-    # val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
-    val_ds = Dataset(data=val_files, transform=transforms())
+    train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
+    val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
 
     # Load the datasets.
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
@@ -222,6 +220,13 @@ def main():
     end_time = time()
     print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")
     wandb.finish()
+
+    # This code is an example tp save a torch into a 3D NIfTI image.
+    # for i, test in enumerate(data_loader):
+    #     fxd_array = test["fixed_image"].cpu().numpy()[0, 0]
+    #     fxd_corrected = np.flip(fxd, axis=(0, 1))
+    #     fxd_img = nib.Nifti1Image(fxd_corrected, affine=np.eye(4))
+    #     nib.save(fxd_img, "fxd_img.nii.gz")
 
 
 # Use this file as a script and run it.
