@@ -7,7 +7,7 @@ import wandb
 from tqdm import tqdm
 
 from monai.config import print_config
-from monai.data import DataLoader, CacheDataset
+from monai.data import DataLoader, CacheDataset, Dataset
 from monai.networks.blocks import Warp
 from monai.networks.nets import LocalNet
 from monai.transforms import Compose, LoadImaged, Resized
@@ -16,7 +16,7 @@ from monai.metrics import DiceMetric
 
 from utils import setup_parser, create_dir, validate_paths
 from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, \
-    INPUT_IMAGE_DEPTH, DEVICE, VAL_SPLIT, PIN_MEMORY, TRAIN_SPLIT
+    INPUT_IMAGE_DEPTH, DEVICE, PIN_MEMORY, TRAIN_SPLIT
 
 print_config()
 
@@ -164,19 +164,18 @@ def main():
 
     # Split training and validation sets.
     train_size = floor(len(data) * TRAIN_SPLIT)
-    val_size = train_size + floor(len(data) * VAL_SPLIT)
-    train_files, val_files, test_files = data[:train_size], data[train_size:val_size], data[val_size:]
+    train_files, val_files = data[:train_size], data[train_size:]
     # train_files, val_files, test_files = data[:1], data[1:2], data[2:3]
 
     # Cache the transforms of the datasets.
-    train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
-    val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
-    test_ds = CacheDataset(data=test_files, transform=transforms(), cache_rate=1.0, num_workers=0)
+    # train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
+    train_ds = Dataset(data=train_files, transform=transforms())
+    # val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
+    val_ds = Dataset(data=val_files, transform=transforms())
 
     # Load the datasets.
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
-    test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
 
     # Create LocalNet, losses and optimizer.
     localnet = LocalNet(
@@ -193,7 +192,6 @@ def main():
     val_steps = len(val_ds) // BATCH_SIZE
 
     warp_layer = Warp().to(DEVICE)
-    warp_layer_nn = Warp("nearest").to(DEVICE)
     criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
     regularization = BendingEnergyLoss()
     optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
@@ -224,12 +222,6 @@ def main():
     end_time = time()
     print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")
     wandb.finish()
-
-    start_time = time()
-    test_dice_avg = inference_model(localnet, test_loader, warp_layer_nn, dice_metric)
-    end_time = time()
-    print(f"[INFO] test dice index: {test_dice_avg}")
-    print(f"[INFO] total time taken to inference the model: {round((end_time - start_time), 2)} seconds")
 
 
 # Use this file as a script and run it.
