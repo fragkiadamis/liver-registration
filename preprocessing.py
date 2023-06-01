@@ -66,38 +66,21 @@ def bias_field_correction(mri):
     run(["clitkN4BiasFieldCorrection", "-i", mri, "-o", mri])
 
 
-# Bring all the images of a patient into the same physical space of the chosen one.
-def resample_moving_2_fixed(pair, like_modality="CT"):
-    # Get the image that gives the physical space reference.
-    like_img = pair[like_modality]["volume"]
-    # Get the images of the study that are about to be resampled.
-    study = "CT" if like_modality == "MRI" else "MRI"
-    images = pair[study]
-
-    print(f"\t-Bring {study} in the physical space of {like_modality}")
-    # Resample the images and store them in the respective output directory.
-    for image in images:
-        img_path = pair[study][image]
-        print(f"\t\t-Image: {img_path}")
-        arg_list = ["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img]
-
-        img = img_path.split("/")[-1]
-        if "liver" in img or "tumor" in img:
-            arg_list.append("--interp=0")
-
+# Change the spacing of the images in the list.
+def resample(images, spacing):
+    ct_images, mri_images = images["CT"], images["MRI"]
+    for img in ct_images:
+        interp = 2 if img == "volume" else 0
+        arg_list = ["clitkAffineTransform", "-i", ct_images[img], "-o", ct_images[img], f"--interp={interp}",
+                    f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"]
+        print(f"\t-CT {img}")
         run(arg_list)
 
-
-# Change the spacing of the images in the list.
-def resample(image_paths, spacing):
-    for img_path in image_paths:
-        arg_list = ["clitkAffineTransform", "-i", img_path, "-o", img_path, "--adaptive",
-                    f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}"]
-
-        img = img_path.split("/")[-1]
-        if "liver" in img or "tumor" in img:
-            arg_list.append("--interp=0")
-
+    for img in mri_images:
+        interp = 2 if img == "volume" else 0
+        arg_list = ["clitkAffineTransform", "-i", mri_images[img], "-o", mri_images[img],
+                    f"--interp={interp}", "-l", ct_images[img]]
+        print(f"\t-MRI {img}")
         run(arg_list)
 
 
@@ -231,23 +214,12 @@ def main():
             }
         }
 
-        fixed_images = [
-            item for item in [
-                pairs["CT"]["volume"],
-                pairs["CT"]["liver"],
-                pairs["CT"]["tumor"]
-            ]
-        ]
-
-        print(f"-Bias field correction for patient: {patient}")
-        bias_field_correction(pairs["MRI"]["volume"])
-        print(f"-Set Spacing for patient: {patient}")
-        # spacing = find_minimum_spacing(pair["CT"]["volume"], pair["MRI"]["volume"])
-        resample(fixed_images, (1, 1, 1))
+        # print(f"-Bias field correction for patient: {patient}")
+        # bias_field_correction(pairs["MRI"]["volume"])
+        print(f"-Resampling for patient: {patient}")
+        resample(pairs, (1, 1, 1))
         # print(f"\n-Cropping for patient: {patient}")
         # crop(pair)
-        print(f"-Resampling for patient: {patient}")
-        resample_moving_2_fixed(pairs)
         print(f"-Create boundary boxes for patient: {patient}")
         create_bounding_boxes(pairs)
         print()
