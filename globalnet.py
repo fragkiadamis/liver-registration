@@ -9,9 +9,9 @@ from tqdm import tqdm
 from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
 from monai.networks.blocks import Warp
-from monai.networks.nets import LocalNet
+from monai.networks.nets import GlobalNet
 from monai.transforms import Compose, LoadImaged, Resized
-from monai.losses import BendingEnergyLoss, DiceLoss, MultiScaleLoss
+from monai.losses import DiceLoss, MultiScaleLoss
 from monai.metrics import DiceMetric
 
 from utils import setup_parser, create_dir, validate_paths
@@ -77,7 +77,7 @@ def forward(sample, model, warp_layer, inference=False):
 
 
 # Train the model.
-def train(model, train_loader, criterion, optimizer, warp_layer, regularization):
+def train(model, train_loader, criterion, optimizer, warp_layer):
     model.train()
     total_train_loss = 0
 
@@ -87,7 +87,7 @@ def train(model, train_loader, criterion, optimizer, warp_layer, regularization)
         fixed_label = batch_data["fixed_label"].to(DEVICE)
         y_pred[y_pred > 1] = 1
 
-        train_loss = criterion(y_pred, fixed_label) + 0.5 * regularization(ddf)
+        train_loss = criterion(y_pred, fixed_label)
         optimizer.zero_grad()
         train_loss.backward()
         optimizer.step()
@@ -98,7 +98,7 @@ def train(model, train_loader, criterion, optimizer, warp_layer, regularization)
 
 
 # Validate the model.
-def validate(model, val_loader, criterion, warp_layer, regularization, dice_metric):
+def validate(model, val_loader, criterion, warp_layer, dice_metric):
     model.eval()
     total_val_loss = 0
 
@@ -108,7 +108,7 @@ def validate(model, val_loader, criterion, warp_layer, regularization, dice_metr
             ddf, y_pred = forward(val_data, model, warp_layer)
             fixed_label = val_data["fixed_label"].to(DEVICE)
 
-            val_loss = criterion(y_pred, fixed_label) + 0.5 * regularization(ddf)
+            val_loss = criterion(y_pred, fixed_label)
             total_val_loss += val_loss.item()
 
             dice = dice_metric(y_pred=y_pred, y=fixed_label)
@@ -176,12 +176,12 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
 
     # Create LocalNet, losses and optimizer.
-    localnet = LocalNet(
+    globalnet = GlobalNet(
+        depth=3,
+        image_size=[INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, INPUT_IMAGE_DEPTH],
         spatial_dims=3,
         in_channels=2,
-        out_channels=3,
         num_channel_initial=32,
-        extract_levels=(3,),
         out_activation=None,
         out_kernel_initializer="zeros",
     ).to(DEVICE)
@@ -189,10 +189,9 @@ def main():
     train_steps = len(train_ds) // BATCH_SIZE
     val_steps = len(val_ds) // BATCH_SIZE
 
-    warp_layer = Warp().to(DEVICE)
+    warp_layer = Warp("bilinear", "border").to(DEVICE)
     criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
-    regularization = BendingEnergyLoss()
-    optimizer = torch.optim.Adam(localnet.parameters(), lr=INIT_LR)
+    optimizer = torch.optim.Adam(globalnet.parameters(), lr=INIT_LR)
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
     dice_values = []
@@ -200,8 +199,8 @@ def main():
 
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
-        train_loss = train(localnet, train_loader, criterion, optimizer, warp_layer, regularization)
-        val_loss, val_dice_avg = validate(localnet, val_loader, criterion, warp_layer, regularization, dice_metric)
+        train_loss = train(globalnet, train_loader, criterion, optimizer, warp_layer)
+        val_loss, val_dice_avg = validate(globalnet, val_loader, criterion, warp_layer, dice_metric)
 
         avg_train_loss = train_loss / train_steps
         avg_val_loss = val_loss / val_steps
@@ -214,7 +213,7 @@ def main():
         dice_values.append(val_dice_avg)
         if val_dice_avg > best_dice:
             best_dice = val_dice_avg
-            torch.save(localnet.state_dict(), f"{model_path}_best.pth")
+            torch.save(globalnet.state_dict(), f"{model_path}_best.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
     end_time = time()
