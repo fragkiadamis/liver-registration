@@ -1,10 +1,12 @@
 import os
+import random
 from time import time
 from math import floor
 
 import torch
 import wandb
 from tqdm import tqdm
+import numpy as np
 
 from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
@@ -16,13 +18,13 @@ from monai.metrics import DiceMetric
 
 from utils import setup_parser, create_dir, validate_paths
 from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, \
-    INPUT_IMAGE_DEPTH, DEVICE, PIN_MEMORY, TRAIN_SPLIT
+    INPUT_IMAGE_DEPTH, DEVICE, PIN_MEMORY, TRAIN_SPLIT, WD
 
 print_config()
 
 wandb.init(
     project="liver-registration",
-    tags=["registration"],
+    name="globalnet",
     config={
         "architecture": ARCHITECTURE,
         "epochs": NUM_EPOCHS,
@@ -31,18 +33,11 @@ wandb.init(
     }
 )
 
-
-# Compare the parameters in two models to see if they are the same or not.
-def are_equal(model_1, model_2):
-    parameters_equal = []
-    for (m1p_name, m1_param), (m2p_name, m2_param) in zip(model_1.items(), model_2.items()):
-        equal = torch.equal(m1_param, m2_param)
-        parameters_equal.append(equal)
-
-    # Check if all parameters are equal
-    all_parameters_equal = all(parameters_equal)
-
-    return True if all_parameters_equal else False
+seed = 42
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
 
 
 # Preprocessing transforms.
@@ -61,17 +56,13 @@ def transforms():
 
 
 # Forward the input to the model to get the prediction.
-def forward(sample, model, warp_layer, inference=False):
+def forward(sample, model, warp_layer):
     x_fixed = sample["fixed_image"].to(DEVICE)
     x_moving = sample["moving_image"].to(DEVICE)
     y_moving = sample["moving_label"].to(DEVICE)
 
     ddf = model(torch.cat((x_fixed, x_moving), dim=1))
     y_pred = warp_layer(y_moving, ddf)
-
-    if inference:
-        x_pred = warp_layer(x_moving, ddf)
-        return ddf, x_pred, y_pred
 
     return ddf, y_pred
 
@@ -87,8 +78,8 @@ def train(model, train_loader, criterion, optimizer, warp_layer):
         fixed_label = batch_data["fixed_label"].to(DEVICE)
         y_pred[y_pred > 1] = 1
 
-        train_loss = criterion(y_pred, fixed_label)
         optimizer.zero_grad()
+        train_loss = criterion(y_pred, fixed_label)
         train_loss.backward()
         optimizer.step()
 
@@ -107,6 +98,7 @@ def validate(model, val_loader, criterion, warp_layer, dice_metric):
         for val_data in val_loader:
             ddf, y_pred = forward(val_data, model, warp_layer)
             fixed_label = val_data["fixed_label"].to(DEVICE)
+            y_pred[y_pred > 1] = 1
 
             val_loss = criterion(y_pred, fixed_label)
             total_val_loss += val_loss.item()
@@ -118,25 +110,6 @@ def validate(model, val_loader, criterion, warp_layer, dice_metric):
         dice_metric.reset()
 
     return total_val_loss, dice_avg
-
-
-# Inference the model on the testing data.
-def inference_model(model, test_loader, warp_layer, dice_metric):
-    model.eval()
-
-    # Loop over the validation set.
-    with torch.no_grad():
-        for test_data in test_loader:
-            ddf, x_pred, y_pred = forward(test_data, model, warp_layer, inference=True)
-            fixed_label = test_data["fixed_label"].to(DEVICE)
-
-            dice = dice_metric(y_pred=y_pred, y=fixed_label)
-            # print(f"Dice: {dice[0][0]}")
-
-        dice_avg = dice_metric.aggregate().item()
-        dice_metric.reset()
-
-    return dice_avg
 
 
 def main():
@@ -165,7 +138,6 @@ def main():
     # Split training and validation sets.
     train_size = floor(len(data) * TRAIN_SPLIT)
     train_files, val_files = data[:train_size], data[train_size:]
-    # train_files, val_files = data[:1], data[1:2]
 
     # Cache the transforms of the datasets.
     train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
@@ -177,21 +149,20 @@ def main():
 
     # Create LocalNet, losses and optimizer.
     globalnet = GlobalNet(
-        depth=3,
+        depth=4,
         image_size=[INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, INPUT_IMAGE_DEPTH],
         spatial_dims=3,
         in_channels=2,
-        num_channel_initial=32,
-        out_activation=None,
+        num_channel_initial=16,
         out_kernel_initializer="zeros",
     ).to(DEVICE)
 
     train_steps = len(train_ds) // BATCH_SIZE
     val_steps = len(val_ds) // BATCH_SIZE
 
-    warp_layer = Warp("bilinear", "border").to(DEVICE)
+    warp_layer = Warp(mode="bilinear", padding_mode="border").to(DEVICE)
     criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
-    optimizer = torch.optim.Adam(globalnet.parameters(), lr=INIT_LR)
+    optimizer = torch.optim.Adam(globalnet.parameters(), lr=INIT_LR, weight_decay=WD)
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
     dice_values = []
@@ -208,7 +179,7 @@ def main():
         # print the model training and validation information
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
         print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
-        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice_index": val_dice_avg})
+        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice": val_dice_avg}, step=e+1)
 
         dice_values.append(val_dice_avg)
         if val_dice_avg > best_dice:
@@ -216,16 +187,11 @@ def main():
             torch.save(globalnet.state_dict(), f"{model_path}_best.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
+        wandb.log({"best_dice": best_dice}, step=e+1)
+
     end_time = time()
     print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")
     wandb.finish()
-
-    # This code is an example tp save a torch into a 3D NIfTI image.
-    # for i, test in enumerate(data_loader):
-    #     fxd_array = test["fixed_image"].cpu().numpy()[0, 0]
-    #     fxd_corrected = np.flip(fxd, axis=(0, 1))
-    #     fxd_img = nib.Nifti1Image(fxd_corrected, affine=np.eye(4))
-    #     nib.save(fxd_img, "fxd_img.nii.gz")
 
 
 # Use this file as a script and run it.

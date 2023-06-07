@@ -1,10 +1,12 @@
 import os
+import random
 from time import time
 from math import floor
 
 import torch
 import wandb
 from tqdm import tqdm
+import numpy as np
 
 from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
@@ -22,7 +24,8 @@ print_config()
 
 wandb.init(
     project="liver-registration",
-    tags=["registration"],
+    tags=["registration", "localnet"],
+    name="localnet",
     config={
         "architecture": ARCHITECTURE,
         "epochs": NUM_EPOCHS,
@@ -30,6 +33,12 @@ wandb.init(
         "batch_size": BATCH_SIZE
     }
 )
+
+seed = 42
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
 
 
 # Compare the parameters in two models to see if they are the same or not.
@@ -209,13 +218,15 @@ def main():
         # print the model training and validation information
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
         print(f"Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
-        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice_index": val_dice_avg})
+        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice_index": val_dice_avg}, step=e+1)
 
         dice_values.append(val_dice_avg)
         if val_dice_avg > best_dice:
             best_dice = val_dice_avg
             torch.save(localnet.state_dict(), f"{model_path}_best.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
+
+        wandb.log({"best_dice": best_dice}, step=e+1)
 
     end_time = time()
     print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")

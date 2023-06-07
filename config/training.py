@@ -9,7 +9,8 @@ DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 PIN_MEMORY = True if DEVICE == "cuda:0" else False
 
 INIT_LR = 1e-3
-NUM_EPOCHS = 1000
+WD = 1e-6
+NUM_EPOCHS = 150
 BATCH_SIZE = 1
 
 # INPUT_IMAGE_WIDTH = 288
