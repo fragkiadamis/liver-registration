@@ -1,0 +1,12 @@
+{
+  "description": "Train a network to predict DDFs.",
+  "arguments": {
+    "required": {
+      "-i": "Path to the dataset.",
+      "-o": "Path to the output.",
+      "-m": "Path to the model."
+    },
+    "optional": {
+    }
+  }
+}
