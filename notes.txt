@@ -27,24 +27,18 @@ JohnDoe_ANON87212 24
 JohnDoe_ANON87639 25
 JohnDoe_ANON96978 26
 
-Patient with problematic images:
+Patient with problematic images (keep out of the dataset):
 JohnDoe_ANON77471
 
-Patients with multiple liver registrations.
+Patients with multiple liver segmentations.
 JohnDoe_ANON61677 -> SPECT-CT
 JohnDoe_ANON28177 -> SPECT-CT
+JohnDoe_ANON55831 -> SPECT-CT
 
-Patients that the tumor is possibly visible on the CT Scan:
-JaneDoe_ANON69091
-JaneDoe_ANON83544
-JohnDoe_ANON15860
-JohnDoe_ANON45696 (check tumor registration on this)
-JohnDoe_ANON53833
-JohnDoe_ANON55240
-JohnDoe_ANON57371
-JohnDoe_ANON81710
-
-JohnDoe_ANON55098
-JohnDoe_ANON61677
-JohnDoe_ANON96978
+Patients that the tumor is visible on the CT Scan:
+JohnDoe_ANON45696
+JohnDoe_ANON22228
+JohnDoe_ANON23001
+JohnDoe_ANON86311
+JohnDoe_ANON29513
 
