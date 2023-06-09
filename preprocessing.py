@@ -62,7 +62,6 @@ def get_median_spacing(input_dir):
 
 # Perform a bias field correction for the MRIs.
 def bias_field_correction(mri):
-    print(f"\t-BFC: {mri}")
     run(["clitkN4BiasFieldCorrection", "-i", mri, "-o", mri])
 
 
@@ -73,35 +72,23 @@ def resample(images, spacing):
         interp = 2 if img == "volume" else 0
         arg_list = ["clitkAffineTransform", "-i", ct_images[img], "-o", ct_images[img], f"--interp={interp}",
                     f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"]
-        print(f"\t-Resampling CT {img}")
         run(arg_list)
 
     for img in mri_images:
         interp = 2 if img == "volume" else 0
         arg_list = ["clitkAffineTransform", "-i", mri_images[img], "-o", mri_images[img],
                     f"--interp={interp}", "-l", ct_images[img]]
-        print(f"\t-Resampling MRI {img}")
         run(arg_list)
 
 
 # For each mask, create a boundary box that surrounds the mask.
 def create_bounding_boxes(pair):
     # Convert to nifty and save the image.
-    def save_bounding_box(bounding_box, path, header, affine):
-        split_path = path.split(".")
-        bounding_box = bounding_box.astype(np.uint8)
-        bounding_box_nii = nib.Nifti1Image(bounding_box, header=header, affine=affine)
-        nib.save(bounding_box_nii, f"{split_path[0]}_bb.{split_path[1]}.gz")
-
     for study in pair:
-        print(f"\t-Study: {study}")
-        volume = pair[study]["volume"]
         liver = pair[study]["liver"]
 
         # Load the mask and convert it into a numpy array.
-        volume_nii = nib.load(volume)
         mask_nii = nib.load(liver)
-        volume_data = np.array(volume_nii.get_fdata())
         mask_data = np.array(mask_nii.get_fdata())
 
         # Get the segmentation_good and find min and max for each axis.
@@ -114,12 +101,11 @@ def create_bounding_boxes(pair):
         bounding_box_mask = np.zeros(mask_data.shape)
         bounding_box_mask[x_min:x_max, y_min:y_max, z_min:z_max] = 1
 
-        # Create a new volume and keep only the intensities inside the liver's bounding box.
-        bounding_box_image = volume_data * bounding_box_mask
-
         # Save bounding boxes.
-        save_bounding_box(bounding_box_mask, liver, mask_nii.header, mask_nii.affine)
-        save_bounding_box(bounding_box_image, volume, volume_nii.header, volume_nii.affine)
+        split_path = liver.split(".")
+        bounding_box_mask = bounding_box_mask.astype(np.uint8)
+        bounding_box_nii = nib.Nifti1Image(bounding_box_mask, header=mask_nii.header, affine=mask_nii.affine)
+        nib.save(bounding_box_nii, f"{split_path[0]}_bb.{split_path[1]}.gz")
 
 
 # Cast the voxel type of the images into float.
@@ -152,7 +138,6 @@ def gaussian_normalize(image_paths):
 # Perform a min/max normalization to the images (0 - 1).
 def min_max_normalization(image_paths):
     for img_path in image_paths:
-        print(f"Normalising {img_path}")
         run(["clitkNormalizeImageFilter", "-i", img_path, "-o", img_path])
 
 
@@ -188,8 +173,8 @@ def main():
         bias_field_correction(pairs["MRI"]["volume"])
         print(f"-Resampling for patient: {patient}")
         resample(pairs, (1, 1, 1))
-        # print(f"-Create boundary boxes for patient: {patient}")
-        # create_bounding_boxes(pairs)
+        print(f"-Create boundary boxes for patient: {patient}")
+        create_bounding_boxes(pairs)
         print()
 
 
