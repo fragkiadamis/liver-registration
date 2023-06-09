@@ -1,12 +1,12 @@
 # Import necessary files and libraries.
 import os
-from shutil import copytree
+from shutil import copytree, copy
 from subprocess import run, check_output
 
 import nibabel as nib
 import numpy as np
 
-from utils import setup_parser, validate_paths, delete_dir
+from utils import setup_parser, validate_paths, delete_dir, create_dir
 
 
 # Traverse through the given dataset paths and create paired paths between the available modalities.
@@ -141,15 +141,8 @@ def min_max_normalization(image_paths):
         run(["clitkNormalizeImageFilter", "-i", img_path, "-o", img_path])
 
 
-def main():
-    dir_name = os.path.dirname(__file__)
-    args = setup_parser("config/preprocessing_parser.json")
-    input_dir = os.path.join(dir_name, args.i)
-    output_dir = os.path.join(dir_name, args.o)
-
-    # Validate input and output paths.
-    validate_paths(input_dir, output_dir)
-
+# The preprocessing pipeline for data use from the elastix software.
+def elastix_preprocessing(input_dir, output_dir):
     # Create the respective output structures. Those will be used for registration.
     delete_dir(output_dir)
     copytree(input_dir, output_dir)
@@ -175,7 +168,88 @@ def main():
         resample(pairs, (1, 1, 1))
         print(f"-Create boundary boxes for patient: {patient}")
         create_bounding_boxes(pairs)
-        print()
+
+
+# The preprocessing pipeline for ct scan deep learning segmentation.
+def dl_seg_preprocessing(input_dir, output_dir):
+    training_set = {
+        "images": create_dir(f"{output_dir}/segmentation", "images"),
+        "labels": create_dir(f"{output_dir}/segmentation", "labels"),
+        "unprocessed_labels": create_dir(f"{output_dir}/segmentation", "non_resampled_labels")
+    }
+
+    for patient in os.listdir(input_dir):
+        patient_dir = os.path.join(input_dir, patient)
+
+        ct_volume = os.path.join(patient_dir, "ct_volume.nii.gz")
+        ct_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
+
+        copy(ct_volume, os.path.join(training_set["images"], f"{patient}_ct_volume.nii.gz"))
+        copy(ct_liver, os.path.join(training_set["labels"], f"{patient}_ct_liver.nii.gz"))
+        copy(ct_liver, os.path.join(training_set["unprocessed_labels"], f"{patient}_ct_liver.nii.gz"))
+
+    image_paths = [os.path.join(training_set["images"], path) for path in os.listdir(training_set["images"])]
+    label_paths = [os.path.join(training_set["labels"], path) for path in os.listdir(training_set["labels"])]
+
+    print("Get median spacing...")
+    median_spacing = get_median_spacing(training_set["images"])
+    print("Resample images...")
+    resample(image_paths, median_spacing)
+    print("Resample labels...")
+    resample(label_paths, median_spacing)
+    print("Cast images to float...")
+    cast_to_type(image_paths, "float")
+    print("Image normalization...")
+    gaussian_normalize(image_paths)
+    # min_max_normalization(image_paths)
+
+
+# The preprocessing pipeline for pairwise deep learning registration.
+def dl_reg_preprocessing(input_dir, output_dir, prealligned_mri, prealligned_mri_dir):
+    training_set = {
+        "images": create_dir(f"{output_dir}/registration", "images"),
+        "labels": create_dir(f"{output_dir}/registration", "labels"),
+        "unprocessed_labels": create_dir(f"{output_dir}/registration", "non_resampled_labels")
+    }
+
+    for patient in os.listdir(input_dir):
+        if prealligned_mri:
+            ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
+            ct_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
+            mri_volume = os.path.join(prealligned_mri_dir, patient, "01_Affine_KS", "mri_volume_reg.nii.gz")
+            mri_label = os.path.join(prealligned_mri_dir, patient, "01_Affine_KS", "mri_liver_reg.nii.gz")
+        else:
+            ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
+            ct_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
+            mri_volume = os.path.join(input_dir, patient, "mri_volume.nii.gz")
+            mri_label = os.path.join(input_dir, patient, "mri_liver.nii.gz")
+
+        copy(ct_volume, os.path.join(training_set["images"], f"{patient}_fixed.nii.gz"))
+        copy(ct_label, os.path.join(training_set["labels"], f"{patient}_fixed.nii.gz"))
+        copy(mri_volume, os.path.join(training_set["images"], f"{patient}_moving.nii.gz"))
+        copy(mri_label, os.path.join(training_set["labels"], f"{patient}_moving.nii.gz"))
+
+
+def main():
+    dir_name = os.path.dirname(__file__)
+    args = setup_parser("config/preprocessing_parser.json")
+    input_dir = os.path.join(dir_name, args.i)
+    output_dir = os.path.join(dir_name, args.o)
+    preprocessing_type = args.t
+    prealligned_mri = int(args.prealigned)
+    prealligned_mri_dir = os.path.join(dir_name, args.d)
+
+    # Validate input and output paths.
+    validate_paths(input_dir, output_dir)
+
+    if preprocessing_type == "elx":
+        elastix_preprocessing(input_dir, output_dir)
+    elif preprocessing_type == "dls":
+        dl_seg_preprocessing(input_dir, output_dir)
+    elif preprocessing_type == "dlr":
+        dl_reg_preprocessing(input_dir, output_dir, prealligned_mri, prealligned_mri_dir)
+    else:
+        print("Provide a valid type for preprocessing.")
 
 
 # Use this file as a script and run it.
