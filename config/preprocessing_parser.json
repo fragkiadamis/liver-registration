@@ -7,8 +7,7 @@
       "-t": "The preprocessing type [elx: for elastix registration, dls: for ct deep learning segmentation, dlr: for deep learning registration].",
     },
     "optional": {
-      "--prealigned": "If the grobal aligned MRIs are going to be preprocessed or the originals [1, 0].",
-      "-d": "The base dir of the prealligned mri."
+      "-d": "The base dir of the prealligned MRIs. If prealligned MRIs are going to be used for the deep learning registration"
     }
   }
 }

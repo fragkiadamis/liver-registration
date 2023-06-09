@@ -212,7 +212,7 @@ def dl_seg_preprocessing(input_dir, output_dir):
 
 
 # The preprocessing pipeline for pairwise deep learning registration.
-def dl_reg_preprocessing(input_dir, output_dir, prealligned_mri, prealligned_mri_dir):
+def dl_reg_preprocessing(input_dir, output_dir, prealligned_mri_dir):
     training_set = {
         "images": create_dir(f"{output_dir}/registration", "images"),
         "labels": create_dir(f"{output_dir}/registration", "labels"),
@@ -220,7 +220,7 @@ def dl_reg_preprocessing(input_dir, output_dir, prealligned_mri, prealligned_mri
     }
 
     for patient in os.listdir(input_dir):
-        if prealligned_mri:
+        if prealligned_mri_dir:
             ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
             ct_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
             mri_volume = os.path.join(prealligned_mri_dir, patient, "01_Affine_KS", "mri_volume_reg.nii.gz")
@@ -250,7 +250,6 @@ def main():
     input_dir = os.path.join(dir_name, args.i)
     output_dir = os.path.join(dir_name, args.o)
     preprocessing_type = args.t
-    prealligned_mri = int(args.prealigned)
     prealligned_mri_dir = os.path.join(dir_name, args.d)
 
     # Validate input and output paths.
@@ -261,7 +260,7 @@ def main():
     elif preprocessing_type == "dls":
         dl_seg_preprocessing(input_dir, output_dir)
     elif preprocessing_type == "dlr":
-        dl_reg_preprocessing(input_dir, output_dir, prealligned_mri, prealligned_mri_dir)
+        dl_reg_preprocessing(input_dir, output_dir, prealligned_mri_dir)
     else:
         print("Provide a valid type for preprocessing.")
 
