@@ -67,18 +67,26 @@ def bias_field_correction(mri):
 
 # Change the spacing of the images in the list.
 def resample(images, spacing):
-    ct_images, mri_images = images["CT"], images["MRI"]
-    for img in ct_images:
-        interp = 2 if img == "volume" else 0
-        arg_list = ["clitkAffineTransform", "-i", ct_images[img], "-o", ct_images[img], f"--interp={interp}",
-                    f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"]
-        run(arg_list)
+    if isinstance(images, list):
+        for img in images:
+            interp = 2 if "volume" in img else 0
+            arg_list = ["clitkAffineTransform", "-i", img, "-o", img, f"--interp={interp}",
+                        f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"]
+            run(arg_list)
 
-    for img in mri_images:
-        interp = 2 if img == "volume" else 0
-        arg_list = ["clitkAffineTransform", "-i", mri_images[img], "-o", mri_images[img],
-                    f"--interp={interp}", "-l", ct_images[img]]
-        run(arg_list)
+    elif isinstance(images, dict):
+        ct_images, mri_images = images["CT"], images["MRI"]
+        for img in ct_images:
+            interp = 2 if img == "volume" else 0
+            arg_list = ["clitkAffineTransform", "-i", ct_images[img], "-o", ct_images[img], f"--interp={interp}",
+                        f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"]
+            run(arg_list)
+
+        for img in mri_images:
+            interp = 2 if img == "volume" else 0
+            arg_list = ["clitkAffineTransform", "-i", mri_images[img], "-o", mri_images[img],
+                        f"--interp={interp}", "-l", ct_images[img]]
+            run(arg_list)
 
 
 # For each mask, create a boundary box that surrounds the mask.
@@ -201,7 +209,6 @@ def dl_seg_preprocessing(input_dir, output_dir):
     cast_to_type(image_paths, "float")
     print("Image normalization...")
     gaussian_normalize(image_paths)
-    # min_max_normalization(image_paths)
 
 
 # The preprocessing pipeline for pairwise deep learning registration.
@@ -228,6 +235,13 @@ def dl_reg_preprocessing(input_dir, output_dir, prealligned_mri, prealligned_mri
         copy(ct_label, os.path.join(training_set["labels"], f"{patient}_fixed.nii.gz"))
         copy(mri_volume, os.path.join(training_set["images"], f"{patient}_moving.nii.gz"))
         copy(mri_label, os.path.join(training_set["labels"], f"{patient}_moving.nii.gz"))
+
+    image_paths = [os.path.join(training_set["images"], path) for path in os.listdir(training_set["images"])]
+
+    print("Cast images to float...")
+    cast_to_type(image_paths, "float")
+    print("Image normalization...")
+    gaussian_normalize(image_paths)
 
 
 def main():
