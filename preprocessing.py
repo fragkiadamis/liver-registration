@@ -16,7 +16,6 @@ def get_pair_paths(parent_dir, studies):
         pair[f"{study if 'CT' in study else 'MRI'}"] = {
             "volume": os.path.join(parent_dir, study, "volume.nii.gz"),
             "liver": os.path.join(parent_dir, study, "liver.nii.gz"),
-            "tumor": os.path.join(parent_dir, study, "tumor.nii.gz")
         }
     return pair
 
@@ -63,6 +62,7 @@ def get_median_spacing(input_dir):
 
 # Perform a bias field correction for the MRIs.
 def bias_field_correction(mri):
+    print(f"\t-BFC: {mri}")
     run(["clitkN4BiasFieldCorrection", "-i", mri, "-o", mri])
 
 
@@ -73,81 +73,53 @@ def resample(images, spacing):
         interp = 2 if img == "volume" else 0
         arg_list = ["clitkAffineTransform", "-i", ct_images[img], "-o", ct_images[img], f"--interp={interp}",
                     f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"]
-        print(f"\t-CT {img}")
+        print(f"\t-Resampling CT {img}")
         run(arg_list)
 
     for img in mri_images:
         interp = 2 if img == "volume" else 0
         arg_list = ["clitkAffineTransform", "-i", mri_images[img], "-o", mri_images[img],
                     f"--interp={interp}", "-l", ct_images[img]]
-        print(f"\t-MRI {img}")
+        print(f"\t-Resampling MRI {img}")
         run(arg_list)
-
-
-# Crop the pairs. For each study, crop automatically the mask and based on the mask, crop the volume.
-def crop(pair):
-    for study in pair:
-        print(f"\t-Study: {study}")
-
-        # Crop the liver mask automatically.
-        liver_path = pair[study]["liver"]
-
-        print(f"\t\t-Nifty: {liver_path}")
-        run(["clitkAutoCrop", "-i", liver_path, "-o", liver_path])
-
-        # Crop the volume and the tumor mask according to the cropped liver mask.
-        volume_path = pair[study]["volume"]
-        tumor_path = pair[study]["tumor"]
-
-        print(f"\t\t-Nifty: {volume_path}")
-        run(["clitkCropImage", "-i", volume_path, "--like", liver_path, "-o", volume_path])
-        print(f"\t\t-Nifty: {tumor_path}")
-        run(["clitkCropImage", "-i", tumor_path, "--like", liver_path, "-o", tumor_path])
 
 
 # For each mask, create a boundary box that surrounds the mask.
 def create_bounding_boxes(pair):
+    # Convert to nifty and save the image.
+    def save_bounding_box(bounding_box, path, header, affine):
+        split_path = path.split(".")
+        bounding_box = bounding_box.astype(np.uint8)
+        bounding_box_nii = nib.Nifti1Image(bounding_box, header=header, affine=affine)
+        nib.save(bounding_box_nii, f"{split_path[0]}_bb.{split_path[1]}.gz")
+
     for study in pair:
         print(f"\t-Study: {study}")
         volume = pair[study]["volume"]
-        for mask in [pair[study]["liver"], pair[study]["tumor"]]:
-            print(f"\t\t-Mask: {mask}")
-            # Load the mask and convert it into a numpy array.
-            mask_nii = nib.load(mask)
-            mask_data = np.array(mask_nii.get_fdata())
+        liver = pair[study]["liver"]
 
-            # Get the segmentation and find min and max for each axis.
-            segmentation = np.where(mask_data == 1)
-            x_min, x_max = int(np.min(segmentation[0])), int(np.max(segmentation[0]))
-            y_min, y_max = int(np.min(segmentation[1])), int(np.max(segmentation[1]))
-            z_min, z_max = int(np.min(segmentation[2])), int(np.max(segmentation[2]))
-
-            # Create new image and the bounding box mask.
-            bounding_box_mask = np.zeros(mask_data.shape)
-            bounding_box_mask[x_min:x_max, y_min:y_max, z_min:z_max] = 1
-
-            # Convert to nifty and save the image.
-            split_mask = mask.split(".")
-            bounding_box_mask = bounding_box_mask.astype(np.uint8)
-            bounding_box_mask = nib.Nifti1Image(bounding_box_mask, header=mask_nii.header, affine=mask_nii.affine)
-            nib.save(bounding_box_mask, f"{split_mask[0]}_bb.{split_mask[1]}.gz")
-
-        print(f"\t\t-Volume: {volume}")
-        # Load the volume of the study and the liver bounding box mask.
+        # Load the mask and convert it into a numpy array.
         volume_nii = nib.load(volume)
+        mask_nii = nib.load(liver)
         volume_data = np.array(volume_nii.get_fdata())
+        mask_data = np.array(mask_nii.get_fdata())
 
-        # Get the liver bounding box.
-        split = volume.split("volume")
-        liver_bb_mask = nib.load(f"{split[0]}liver_bb{split[1]}")
-        liver_bb_mask_data = np.array(liver_bb_mask.get_fdata())
+        # Get the segmentation_good and find min and max for each axis.
+        segmentation = np.where(mask_data == 1)
+        x_min, x_max = int(np.min(segmentation[0])), int(np.max(segmentation[0]))
+        y_min, y_max = int(np.min(segmentation[1])), int(np.max(segmentation[1]))
+        z_min, z_max = int(np.min(segmentation[2])), int(np.max(segmentation[2]))
+
+        # Create new image and the bounding box mask.
+        bounding_box_mask = np.zeros(mask_data.shape)
+        bounding_box_mask[x_min:x_max, y_min:y_max, z_min:z_max] = 1
 
         # Create a new volume and keep only the intensities inside the liver's bounding box.
-        split_volume = volume.split(".")
-        bounding_box_image = volume_data * liver_bb_mask_data
-        bounding_box_image = bounding_box_image.astype(np.ushort)
-        bounding_box_image = nib.Nifti1Image(bounding_box_image, header=volume_nii.header, affine=volume_nii.affine)
-        nib.save(bounding_box_image, f"{split_volume[0]}_bb.{split_volume[1]}.gz")
+        bounding_box_image = volume_data * bounding_box_mask
+
+        # Save bounding boxes.
+        save_bounding_box(bounding_box_mask, liver, mask_nii.header, mask_nii.affine)
+        save_bounding_box(bounding_box_image, volume, volume_nii.header, volume_nii.affine)
 
 
 # Cast the voxel type of the images into float.
@@ -205,23 +177,19 @@ def main():
             "CT": {
                 "volume": os.path.join(patient_dir, "ct_volume.nii.gz"),
                 "liver": os.path.join(patient_dir, "ct_liver.nii.gz"),
-                "tumor": os.path.join(patient_dir, "ct_tumor.nii.gz")
             },
             "MRI": {
                 "volume": os.path.join(patient_dir, "mri_volume.nii.gz"),
                 "liver": os.path.join(patient_dir, "mri_liver.nii.gz"),
-                "tumor": os.path.join(patient_dir, "mri_tumor.nii.gz")
             }
         }
 
-        # print(f"-Bias field correction for patient: {patient}")
-        # bias_field_correction(pairs["MRI"]["volume"])
+        print(f"-Bias field correction for patient: {patient}")
+        bias_field_correction(pairs["MRI"]["volume"])
         print(f"-Resampling for patient: {patient}")
         resample(pairs, (1, 1, 1))
-        # print(f"\n-Cropping for patient: {patient}")
-        # crop(pair)
-        print(f"-Create boundary boxes for patient: {patient}")
-        create_bounding_boxes(pairs)
+        # print(f"-Create boundary boxes for patient: {patient}")
+        # create_bounding_boxes(pairs)
         print()
 
 
