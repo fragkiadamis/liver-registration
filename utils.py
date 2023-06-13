@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+from enum import Enum
 
 from shutil import rmtree
 
@@ -68,3 +69,13 @@ class ConsoleColors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
     END = '\033[0m'
+
+
+# Image properties.
+class ImageProperty(Enum):
+    DIMS = 0
+    TYPE = 1
+    SIZE = 2
+    SPACING = 3
+    ORIGIN = 4
+    VOXELS = 5

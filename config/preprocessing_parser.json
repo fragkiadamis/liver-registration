@@ -4,10 +4,10 @@
     "required": {
       "-i": "Path to the directory where the nifty database exists.",
       "-o": "Path to the directory where the processed database is going to be saved.",
-      "-t": "The preprocessing type [elx: for elastix registration, dls: for ct deep learning segmentation, dlr: for deep learning registration].",
+      "-t": "The preprocessing type ['elx': for elastix registration, 'dls': for ct deep learning segmentation, 'dlr': for deep learning registration]."
     },
     "optional": {
-      "-d": "The base dir of the prealligned MRIs. If prealligned MRIs are going to be used for the deep learning registration"
+      "-pd": "The base dir of the prealligned MRIs. If prealligned MRIs are going to be used for the deep learning registration"
     }
   }
 }

@@ -6,7 +6,7 @@ from subprocess import run, check_output
 import nibabel as nib
 import numpy as np
 
-from utils import setup_parser, validate_paths, delete_dir, create_dir
+from utils import setup_parser, validate_paths, delete_dir, create_dir, ImageProperty
 
 
 # Traverse through the given dataset paths and create paired paths between the available modalities.
@@ -20,42 +20,23 @@ def get_pair_paths(parent_dir, studies):
     return pair
 
 
-# Get the spacing for each axis of the image.
-def get_spacing(input_image):
-    output = check_output(["clitkImageInfo", input_image])
-    output = output.decode()
-    spacing = output.split(" ")[3]
-    spacing_splitted = spacing.split("x")
-
-    # Return the spacing in float type.
-    return [float(x) for x in spacing_splitted]
-
-
-# Find and return the minimum spacing for each axis between two volumes.
-def find_minimum_spacing(path_1, path_2):
-    img_1_spacing = get_spacing(path_1)
-    img_2_spacing = get_spacing(path_2)
-
-    spacing = (
-        min(img_1_spacing[0], img_2_spacing[0]),
-        min(img_1_spacing[1], img_2_spacing[1]),
-        min(img_1_spacing[2], img_2_spacing[2])
-    )
-    return spacing
-
-
 # Calculate and return the median spacing of the dataset.
-def get_median_spacing(input_dir):
+def get_prop_median(input_dir, prop):
     # Get the spacing for all the images.
-    spacing_list = []
+    prop_list = []
     for image in os.listdir(input_dir):
         image_path = os.path.join(input_dir, image)
-        image_spacing = get_spacing(image_path)
-        spacing_list.append(image_spacing)
+
+        output = check_output(["clitkImageInfo", image_path])
+        output = output.decode()
+        spacing = output.split(" ")[prop]
+        spacing_splitted = spacing.split("x")
+
+        prop_list.append([float(x) for x in spacing_splitted])
 
     # Get the median from the list.
-    spacing_list = np.asarray(spacing_list)
-    median_spacing = np.median(spacing_list, axis=0)
+    prop_list = np.asarray(prop_list)
+    median_spacing = np.median(prop_list, axis=0)
 
     return median_spacing
 
@@ -65,28 +46,44 @@ def bias_field_correction(mri):
     run(["clitkN4BiasFieldCorrection", "-i", mri, "-o", mri])
 
 
-# Change the spacing of the images in the list.
-def resample(images, spacing):
-    if isinstance(images, list):
-        for img in images:
-            interp = 2 if "volume" in img else 0
-            arg_list = ["clitkAffineTransform", "-i", img, "-o", img, f"--interp={interp}",
-                        f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"]
-            run(arg_list)
+# Change the spacing and the size of the images in the pair.
+def resample(pair, spacing=None, size=None, adaptive=True):
+    # Get the base image and create a list with the images that are going to be transformed according to the base image.
+    base_img = pair["CT"]["volume"]
+    image_list = [*[value for key, value in pair["CT"].items() if key != "volume"]]
+    if "MRI" in pair:
+        image_list += [value for key, value in pair["MRI"].items()]
 
-    elif isinstance(images, dict):
-        ct_images, mri_images = images["CT"], images["MRI"]
-        for img in ct_images:
-            interp = 2 if img == "volume" else 0
-            arg_list = ["clitkAffineTransform", "-i", ct_images[img], "-o", ct_images[img], f"--interp={interp}",
-                        f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"]
-            run(arg_list)
+    # FInd minimum value to use it for padding.
+    ct_image = nib.load(base_img)
+    ct_image_data = np.array(ct_image.get_fdata())
+    ct_min = np.min(ct_image_data)
 
-        for img in mri_images:
-            interp = 2 if img == "volume" else 0
-            arg_list = ["clitkAffineTransform", "-i", mri_images[img], "-o", mri_images[img],
-                        f"--interp={interp}", "-l", ct_images[img]]
-            run(arg_list)
+    # Change the spacing.
+    if spacing:
+        arg_list = [
+            "clitkAffineTransform", "-i", base_img, "-o", base_img, "--interp=2",
+            f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", f"--pad={ct_min}"
+        ]
+        if adaptive:
+            arg_list.append("--adaptive")
+        run(arg_list)
+
+    # Change the size.
+    if size:
+        arg_list = [
+            "clitkAffineTransform", "-i", base_img, "-o", base_img, "--interp=2",
+            f"--size={str(size[0])},{str(size[1])},{str(size[2])}", f"--pad={ct_min}"
+        ]
+        if adaptive:
+            arg_list.append("--adaptive")
+        run(arg_list)
+
+    # Resample the image list according to the base image.
+    for img in image_list:
+        interp = 2 if "volume" in img else 0
+        arg_list = ["clitkAffineTransform", "-i", img, "-o", img, f"--interp={interp}", "-l", base_img]
+        run(arg_list)
 
 
 # For each mask, create a boundary box that surrounds the mask.
@@ -155,11 +152,10 @@ def elastix_preprocessing(input_dir, output_dir):
     delete_dir(output_dir)
     copytree(input_dir, output_dir)
 
-    # Preprocessing for conventional registration usage.
     for patient in os.listdir(output_dir):
         patient_dir = os.path.join(output_dir, patient)
 
-        pairs = {
+        pair = {
             "CT": {
                 "volume": os.path.join(patient_dir, "ct_volume.nii.gz"),
                 "liver": os.path.join(patient_dir, "ct_liver.nii.gz"),
@@ -170,78 +166,91 @@ def elastix_preprocessing(input_dir, output_dir):
             }
         }
 
+        # Preprocessing for conventional registration usage.
         print(f"-Bias field correction for patient: {patient}")
-        bias_field_correction(pairs["MRI"]["volume"])
+        bias_field_correction(pair["MRI"]["volume"])
         print(f"-Resampling for patient: {patient}")
-        resample(pairs, (1, 1, 1))
+        resample(pair, spacing=(1, 1, 1))
         print(f"-Create boundary boxes for patient: {patient}")
-        create_bounding_boxes(pairs)
+        create_bounding_boxes(pair)
 
 
 # The preprocessing pipeline for ct scan deep learning segmentation.
 def dl_seg_preprocessing(input_dir, output_dir):
-    training_set = {
-        "images": create_dir(f"{output_dir}/segmentation", "images"),
-        "labels": create_dir(f"{output_dir}/segmentation", "labels"),
-        "unprocessed_labels": create_dir(f"{output_dir}/segmentation", "non_resampled_labels")
-    }
+    images_dir = create_dir(f"{output_dir}", "images")
+    labels_dir = create_dir(f"{output_dir}", "labels")
+    unprocessed_labels_dir = create_dir(f"{output_dir}", "non_resampled_labels")
 
+    # Create the necessary structure.
+    pairs = []
     for patient in os.listdir(input_dir):
         patient_dir = os.path.join(input_dir, patient)
 
         ct_volume = os.path.join(patient_dir, "ct_volume.nii.gz")
         ct_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
 
-        copy(ct_volume, os.path.join(training_set["images"], f"{patient}_ct_volume.nii.gz"))
-        copy(ct_liver, os.path.join(training_set["labels"], f"{patient}_ct_liver.nii.gz"))
-        copy(ct_liver, os.path.join(training_set["unprocessed_labels"], f"{patient}_ct_liver.nii.gz"))
+        pair = {
+            "CT": {
+                "volume": copy(ct_volume, os.path.join(images_dir, f"{patient}.nii.gz")),
+                "liver": copy(ct_liver, os.path.join(labels_dir, f"{patient}.nii.gz"))
+            }
+        }
+        copy(ct_liver, os.path.join(unprocessed_labels_dir, f"{patient}.nii.gz"))
 
-    image_paths = [os.path.join(training_set["images"], path) for path in os.listdir(training_set["images"])]
-    label_paths = [os.path.join(training_set["labels"], path) for path in os.listdir(training_set["labels"])]
+        pairs.append(pair)
 
+    # Process the images.
     print("Get median spacing...")
-    median_spacing = get_median_spacing(training_set["images"])
-    print("Resample images...")
-    resample(image_paths, median_spacing)
-    print("Resample labels...")
-    resample(label_paths, median_spacing)
-    print("Cast images to float...")
-    cast_to_type(image_paths, "float")
-    print("Image normalization...")
-    gaussian_normalize(image_paths)
+    median_spacing = get_prop_median([*[pair["CT"]["volume"] for pair in pairs]], prop=ImageProperty.SPACING)
+
+    counter = 0
+    for pair in pairs:
+        print(f"-Pair {counter}")
+        print("\t-Resample images and labels...")
+        resample(pair, spacing=median_spacing)
+        print("\t-Cast images to float...")
+        cast_to_type([pair["CT"]["volume"]], "float")
+        print("\t-Image normalization...")
+        gaussian_normalize([pair["CT"]["volume"]])
+
+        counter += 1
 
 
 # The preprocessing pipeline for pairwise deep learning registration.
-def dl_reg_preprocessing(input_dir, output_dir, prealligned_mri_dir):
-    training_set = {
-        "images": create_dir(f"{output_dir}/registration", "images"),
-        "labels": create_dir(f"{output_dir}/registration", "labels"),
-        "unprocessed_labels": create_dir(f"{output_dir}/registration", "non_resampled_labels")
-    }
-
+def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
+    # Create the necessary structure.
     for patient in os.listdir(input_dir):
-        if prealligned_mri_dir:
-            ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
-            ct_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
-            mri_volume = os.path.join(prealligned_mri_dir, patient, "01_Affine_KS", "mri_volume_reg.nii.gz")
-            mri_label = os.path.join(prealligned_mri_dir, patient, "01_Affine_KS", "mri_liver_reg.nii.gz")
+        print(f"-Processing {patient}")
+        patient_dir = create_dir(output_dir, patient)
+
+        ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
+        ct_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
+
+        if aligned_mri_dir:
+            mri_volume = os.path.join(aligned_mri_dir, patient, "01_Affine_KS", "mri_volume_reg.nii.gz")
+            mri_label = os.path.join(aligned_mri_dir, patient, "01_Affine_KS", "mri_liver_reg.nii.gz")
         else:
-            ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
-            ct_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
             mri_volume = os.path.join(input_dir, patient, "mri_volume.nii.gz")
             mri_label = os.path.join(input_dir, patient, "mri_liver.nii.gz")
 
-        copy(ct_volume, os.path.join(training_set["images"], f"{patient}_fixed.nii.gz"))
-        copy(ct_label, os.path.join(training_set["labels"], f"{patient}_fixed.nii.gz"))
-        copy(mri_volume, os.path.join(training_set["images"], f"{patient}_moving.nii.gz"))
-        copy(mri_label, os.path.join(training_set["labels"], f"{patient}_moving.nii.gz"))
+        pair = {
+            "CT": {
+                "volume": copy(ct_volume, os.path.join(patient_dir, "ct_volume.nii.gz")),
+                "liver": copy(ct_label, os.path.join(patient_dir, "ct_liver.nii.gz"))
+            },
+            "MRI": {
+                "volume": copy(mri_volume, os.path.join(patient_dir, "mri_volume.nii.gz")),
+                "liver": copy(mri_label, os.path.join(patient_dir, "mri_liver.nii.gz"))
+            }
+        }
 
-    image_paths = [os.path.join(training_set["images"], path) for path in os.listdir(training_set["images"])]
-
-    print("Cast images to float...")
-    cast_to_type(image_paths, "float")
-    print("Image normalization...")
-    gaussian_normalize(image_paths)
+        # Process the images.
+        print("\t-Resample images and labels...")
+        resample(pair, spacing=(2, 2, 2), size=(256, 256, 128), adaptive=False)
+        print("\t-Cast images to float...")
+        cast_to_type([pair["CT"]["volume"], pair["MRI"]["volume"]], "float")
+        print("\t-Image normalization...")
+        gaussian_normalize([pair["CT"]["volume"], pair["MRI"]["volume"]])
 
 
 def main():
@@ -250,7 +259,7 @@ def main():
     input_dir = os.path.join(dir_name, args.i)
     output_dir = os.path.join(dir_name, args.o)
     preprocessing_type = args.t
-    prealligned_mri_dir = os.path.join(dir_name, args.d)
+    aligned_mri_dir = os.path.join(dir_name, args.pd) if args.pd else None
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
@@ -260,7 +269,7 @@ def main():
     elif preprocessing_type == "dls":
         dl_seg_preprocessing(input_dir, output_dir)
     elif preprocessing_type == "dlr":
-        dl_reg_preprocessing(input_dir, output_dir, prealligned_mri_dir)
+        dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=aligned_mri_dir)
     else:
         print("Provide a valid type for preprocessing.")
 
