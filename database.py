@@ -9,11 +9,6 @@ import numpy as np
 
 from utils import setup_parser, validate_paths, rename_instance, create_dir
 
-# Add manually here the patients that have visible tumors on the CT.
-CT_VISIBLE_TUMORS = [
-    "JohnDoe_ANON45696"
-]
-
 
 # Return a list with the files of the directory.
 def get_files(path):
@@ -46,8 +41,11 @@ def fix_duplicate(parent_dir, name):
 def rename_dicom_structure(study_input):
     studies = os.listdir(study_input)
     for idx, std_name in enumerate(studies):
-        std_name_new = "MR" if "_MR_" in std_name else \
+        std_name_new = \
+            "MR_DEF" if "Def" in std_name and "_MR_" in std_name else \
+            "MR" if "_MR_" in std_name else \
             "CT" if "_CT_" in std_name else \
+            "RTst_DEF" if "def" in std_name and "_RTst_" in std_name else \
             "RTst" if "_RTst_" in std_name else \
             "REG" if "_REG_" in std_name else ""
         std_name_new = fix_duplicate(study_input, std_name_new)
@@ -75,13 +73,17 @@ def fix_filenames(patient_dir, modality):
             print(f"\t\t\t-Deleting file: {filename}")
             os.remove(os.path.join(patient_dir, filename))
             continue
+
+        elif "def" in new_filename:
+            if "foie" in new_filename or "liver" in new_filename:
+                new_filename = f"{modality}_liver_reg.nii.gz"
+            elif "tumeur" in new_filename or "tumor" in new_filename or "tum" in new_filename:
+                new_filename = f"{modality}_tumor_reg.nii.gz"
+
         elif "foie" in new_filename or "liver" in new_filename:
             new_filename = f"{modality}_liver.nii.gz"
+
         elif "tumeur" in new_filename or "tumor" in new_filename or "tum" in new_filename:
-            # If the patient has visible tumors on the CT, handle manually the files.
-            patient = patient_dir.split("/")[0]
-            if patient in CT_VISIBLE_TUMORS:
-                continue
             new_filename = f"{modality}_tumor.nii.gz"
 
         split_name = new_filename.split(".")
@@ -92,7 +94,7 @@ def fix_filenames(patient_dir, modality):
 
         rename_instance(patient_dir, filename, new_filename)
 
-        if "tumor" in new_filename:
+        if "tumor.nii.gz" in new_filename:
             segmentations.append(new_filename)
 
     return segmentations
@@ -132,8 +134,8 @@ def extract_from_dicom(study_input, patient_output):
     # Long names might cause problems with the windows command prompt.
     rename_dicom_structure(study_input)
 
-    dicom_series = [x for x in os.listdir(study_input) if x == "MR" or x == "CT"]
-    dicom_rtstr = [x for x in os.listdir(study_input) if x == "RTst"]
+    dicom_series = [x for x in os.listdir(study_input) if x == "MR" or x == "MR_DEF" or x == "CT"]
+    dicom_rtstr = [x for x in os.listdir(study_input) if x == "RTst" or x == "RTst_DEF"]
 
     # Extract the volume from the series in nifty format.
     volume_path = ""
@@ -142,12 +144,12 @@ def extract_from_dicom(study_input, patient_output):
     for series in dicom_series:
         series_path = os.path.join(study_input, series)
         series_files = get_files(series_path)
-        volume_path = os.path.join(patient_output, f"{modality}_volume.nii.gz")
+        volume_path = os.path.join(patient_output, f"{modality}_volume{'_reg' if series == 'MR_DEF' else ''}.nii.gz")
         print(f"\t\t-Extract volume: {series} ---> {volume_path}")
         run(["clitkDicom2Image", *series_files, "-o", volume_path, "-t", "10"])
 
     # Extract the masks from the RT structures in nifty format. Use the extracted volume from above.
-    for rt_structure in dicom_rtstr:
+    for i, rt_structure in enumerate(dicom_rtstr):
         rtstruct_path = os.path.join(study_input, rt_structure)
         rtstruct_file = get_files(rtstruct_path)[0]
         print(f"\t\t-Extract RT struct: {rt_structure} ---> {patient_output}/")
@@ -156,13 +158,13 @@ def extract_from_dicom(study_input, patient_output):
              "-o", f"{patient_output}/{modality}_", "--niigz", "-t", "10"]
         )
 
-        # Fix the filenames of the rois and return the tumor segmentations.
-        tumor_rois = fix_filenames(patient_output, modality)
-
-        # If the tumor is segmented in multiple files, add the rois in one file.
-        # if len(tumor_rois) > 1:
-        #     print(f"\t\t-Adding the fragmented tumor segmentations into one file.")
-        #     add_segmentations(tumor_rois, volume_path, modality, patient_output)
+        # Fix the filenames of the rois and return the tumor segmentations in the last run.
+        if i == len(dicom_rtstr) - 1:
+            tumor_rois = fix_filenames(patient_output, modality)
+            # If the tumor is segmented in multiple files, add the rois in one file.
+            if len(tumor_rois) > 1:
+                print(f"\t\t-Adding the fragmented tumor segmentations into one file.")
+                add_segmentations(tumor_rois, volume_path, modality, patient_output)
 
     # TODO: Make sure that the correct information is being extracted.
     # for registration in dicom_reg:
@@ -262,7 +264,7 @@ def main():
             extract_from_dicom(study_input, patient_output)
 
     # # Make a check to handle any possible duplicate data.
-    check_for_duplicates(output_dir, os.listdir(output_dir))
+    # check_for_duplicates(output_dir, os.listdir(output_dir))
 
 
 # Use this file as a script and run it.
