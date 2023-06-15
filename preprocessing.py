@@ -1,5 +1,6 @@
 # Import necessary files and libraries.
 import os
+from math import floor, ceil
 from shutil import copytree, copy
 from subprocess import run, check_output
 
@@ -41,48 +42,93 @@ def get_prop_median(input_dir, prop):
     return median_spacing
 
 
+# Get the lower and upper bounds for padding.
+def get_lower_and_upper_bounds(img, size):
+    # Find minimum value to use it for padding.
+    img = nib.load(img)
+    img_data = np.array(img.get_fdata())
+    img_min = np.min(img_data)
+
+    lb, ub = (
+        floor((size[0] - img_data.shape[0]) / 2),
+        floor((size[1] - img_data.shape[1]) / 2),
+        floor((size[2] - img_data.shape[2]) / 2)
+    ), (
+        ceil((size[0] - img_data.shape[0]) / 2),
+        ceil((size[1] - img_data.shape[1]) / 2),
+        ceil((size[2] - img_data.shape[2]) / 2)
+    )
+
+    return lb, ub, img_min
+
+
+# Cast the voxel type of the images into float.
+def cast_to_type(image_paths, img_type):
+    for img_path in image_paths:
+        run(["clitkImageConvert", "-i", img_path, "-o", img_path, "-t", img_type])
+
+
+# Get the statistics of the image.
+def get_statistics(img_path):
+    output = check_output(["clitkImageStatistics", '-v', img_path])
+    output = output.decode()
+    output_split = output.split("\n")
+
+    mean = float(output_split[9][5:])
+    std = 1 / float(output_split[10][3:])
+
+    return -mean, std
+
+
 # Perform a bias field correction for the MRIs.
 def bias_field_correction(mri):
     run(["clitkN4BiasFieldCorrection", "-i", mri, "-o", mri])
 
 
 # Change the spacing and the size of the images in the pair.
-def resample(pair, spacing=None, size=None, adaptive=True):
+def resample(pair, spacing=None, size=None):
     # Get the base image and create a list with the images that are going to be transformed according to the base image.
     base_img = pair["CT"]["volume"]
     image_list = [*[value for key, value in pair["CT"].items() if key != "volume"]]
     if "MRI" in pair:
         image_list += [value for key, value in pair["MRI"].items()]
 
-    # FInd minimum value to use it for padding.
-    ct_image = nib.load(base_img)
-    ct_image_data = np.array(ct_image.get_fdata())
-    ct_min = np.min(ct_image_data)
+    # Find minimum value to use it for padding.
+    img = nib.load(base_img)
+    img_data = np.array(img.get_fdata())
+    img_min = np.min(img_data)
 
     # Change the spacing.
     if spacing:
         arg_list = [
             "clitkAffineTransform", "-i", base_img, "-o", base_img, "--interp=2",
-            f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", f"--pad={ct_min}"
+            f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"
         ]
-        if adaptive:
-            arg_list.append("--adaptive")
         run(arg_list)
 
-    # Change the size.
+    # Change the size by padding the image (can be done with clitkAffineTransform, but I want to make sure that
+    # resampling and interpolation is not used in the process).
     if size:
+        lb, ub, img_min = get_lower_and_upper_bounds(base_img, size)
         arg_list = [
-            "clitkAffineTransform", "-i", base_img, "-o", base_img, "--interp=2",
-            f"--size={str(size[0])},{str(size[1])},{str(size[2])}", f"--pad={ct_min}"
+            "clitkPadImage", "-i", base_img, "-o", base_img,
+            f"--lower={str(lb[0])},{str(lb[1])},{str(lb[2])}",
+            f"--upper={str(ub[0])},{str(ub[1])},{str(ub[2])}",
+            f"--value={img_min}"
         ]
-        if adaptive:
-            arg_list.append("--adaptive")
         run(arg_list)
 
     # Resample the image list according to the base image.
     for img in image_list:
+        image = nib.load(img)
+        image_data = np.array(image.get_fdata())
+        img_min = np.min(image_data)
+
         interp = 2 if "volume" in img else 0
-        arg_list = ["clitkAffineTransform", "-i", img, "-o", img, f"--interp={interp}", "-l", base_img]
+        arg_list = [
+            "clitkAffineTransform", "-i", img, "-o", img,
+            f"--interp={interp}", "-l", base_img, f"--pad={img_min}"
+        ]
         run(arg_list)
 
 
@@ -111,24 +157,6 @@ def create_bounding_boxes(pair):
         bounding_box_mask = bounding_box_mask.astype(np.uint8)
         bounding_box_nii = nib.Nifti1Image(bounding_box_mask, header=mask_nii.header, affine=mask_nii.affine)
         nib.save(bounding_box_nii, f"{split_path[0]}_bb.{split_path[1]}.gz")
-
-
-# Cast the voxel type of the images into float.
-def cast_to_type(image_paths, img_type):
-    for img_path in image_paths:
-        run(["clitkImageConvert", "-i", img_path, "-o", img_path, "-t", img_type])
-
-
-# Get the statistics of the image.
-def get_statistics(img_path):
-    output = check_output(["clitkImageStatistics", '-v', img_path])
-    output = output.decode()
-    output_split = output.split("\n")
-
-    mean = float(output_split[9][5:])
-    std = 1 / float(output_split[10][3:])
-
-    return -mean, std
 
 
 # Perform a gaussian normalization to the images.
@@ -167,10 +195,10 @@ def elastix_preprocessing(input_dir, output_dir):
         }
 
         # Preprocessing for conventional registration usage.
-        print(f"-Bias field correction for patient: {patient}")
-        bias_field_correction(pair["MRI"]["volume"])
+        # print(f"-Bias field correction for patient: {patient}")
+        # bias_field_correction(pair["MRI"]["volume"])
         print(f"-Resampling for patient: {patient}")
-        resample(pair, spacing=(1, 1, 1))
+        resample(pair, spacing=(1, 1, 1), size=(512, 512, 512))
         print(f"-Create boundary boxes for patient: {patient}")
         create_bounding_boxes(pair)
 
@@ -246,7 +274,7 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
 
         # Process the images.
         print("\t-Resample images and labels...")
-        resample(pair, spacing=(2, 2, 2), size=(256, 256, 128), adaptive=False)
+        resample(pair, spacing=(2, 2, 2), size=(256, 256, 256))
         print("\t-Cast images to float...")
         cast_to_type([pair["CT"]["volume"], pair["MRI"]["volume"]], "float")
         print("\t-Image normalization...")
