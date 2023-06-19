@@ -72,7 +72,7 @@ class ConsoleColors:
 
 
 # Image properties.
-class ImageProperty(Enum):
+class ImageProperty:
     DIMS = 0
     TYPE = 1
     SIZE = 2

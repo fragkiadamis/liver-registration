@@ -93,13 +93,8 @@ def resample(pair, spacing=None, size=None):
     if "MRI" in pair:
         image_list += [value for key, value in pair["MRI"].items()]
 
-    # Find minimum value to use it for padding.
-    img = nib.load(base_img)
-    img_data = np.array(img.get_fdata())
-    img_min = np.min(img_data)
-
     # Change the spacing.
-    if spacing:
+    if spacing is not None:
         arg_list = [
             "clitkAffineTransform", "-i", base_img, "-o", base_img, "--interp=2",
             f"--spacing={str(spacing[0])},{str(spacing[1])},{str(spacing[2])}", "--adaptive"
@@ -108,7 +103,7 @@ def resample(pair, spacing=None, size=None):
 
     # Change the size by padding the image (can be done with clitkAffineTransform, but I want to make sure that
     # resampling and interpolation is not used in the process).
-    if size:
+    if size is not None:
         lb, ub, img_min = get_lower_and_upper_bounds(base_img, size)
         arg_list = [
             "clitkPadImage", "-i", base_img, "-o", base_img,
@@ -198,7 +193,7 @@ def elastix_preprocessing(input_dir, output_dir):
         # print(f"-Bias field correction for patient: {patient}")
         # bias_field_correction(pair["MRI"]["volume"])
         print(f"-Resampling for patient: {patient}")
-        resample(pair, spacing=(1, 1, 1), size=(512, 512, 512))
+        resample(pair, spacing=(1, 1, 1), size=(512, 512, 448))
         print(f"-Create boundary boxes for patient: {patient}")
         create_bounding_boxes(pair)
 
@@ -229,7 +224,7 @@ def dl_seg_preprocessing(input_dir, output_dir):
 
     # Process the images.
     print("Get median spacing...")
-    median_spacing = get_prop_median([*[pair["CT"]["volume"] for pair in pairs]], prop=ImageProperty.SPACING)
+    median_spacing = get_prop_median(images_dir, prop=ImageProperty.SPACING)
 
     counter = 0
     for pair in pairs:
@@ -274,7 +269,7 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
 
         # Process the images.
         print("\t-Resample images and labels...")
-        resample(pair, spacing=(2, 2, 2), size=(256, 256, 256))
+        resample(pair, spacing=(2, 2, 2), size=(256, 256, 224))
         print("\t-Cast images to float...")
         cast_to_type([pair["CT"]["volume"], pair["MRI"]["volume"]], "float")
         print("\t-Image normalization...")

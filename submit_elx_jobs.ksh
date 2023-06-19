@@ -18,7 +18,7 @@ do
     PATIENT=${PATIENT_DIR##*/}
     PATIENT_ID=$(echo $PATIENT | sed 's/[A-Za-z._]//g')
 
-    # Create the file to be executed on the cluster
+    # Create the file to be qsubed.
     {
         echo "#!/bin/ksh"
         echo "#$ -q batch"
