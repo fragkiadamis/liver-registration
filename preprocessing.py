@@ -10,17 +10,6 @@ import numpy as np
 from utils import setup_parser, validate_paths, delete_dir, create_dir, ImageProperty
 
 
-# Traverse through the given dataset paths and create paired paths between the available modalities.
-def get_pair_paths(parent_dir, studies):
-    pair = {}
-    for study in studies:
-        pair[f"{study if 'CT' in study else 'MRI'}"] = {
-            "volume": os.path.join(parent_dir, study, "volume.nii.gz"),
-            "liver": os.path.join(parent_dir, study, "liver.nii.gz"),
-        }
-    return pair
-
-
 # Calculate and return the median spacing of the dataset.
 def get_prop_median(input_dir, prop):
     # Get the spacing for all the images.
@@ -131,7 +120,7 @@ def resample(pair, spacing=None, size=None):
 def create_bounding_boxes(pair):
     # Convert to nifty and save the image.
     for study in pair:
-        liver = pair[study]["liver"]
+        liver = pair[study]["unet3d_liver"] if study == "CT" else pair[study]["liver"]
 
         # Load the mask and convert it into a numpy array.
         mask_nii = nib.load(liver)
@@ -182,12 +171,24 @@ def elastix_preprocessing(input_dir, output_dir):
             "CT": {
                 "volume": os.path.join(patient_dir, "ct_volume.nii.gz"),
                 "liver": os.path.join(patient_dir, "ct_liver.nii.gz"),
+                "unet3d_liver": os.path.join(patient_dir, "ct_unet3d_liver.nii.gz"),
             },
             "MRI": {
                 "volume": os.path.join(patient_dir, "mri_volume.nii.gz"),
                 "liver": os.path.join(patient_dir, "mri_liver.nii.gz"),
             }
         }
+
+        # Add conditionally the tumor path, because some RTStructs might not contain tumor labels.
+        if os.path.exists(os.path.join(patient_dir, "ct_tumor.nii.gz")):
+            pair["CT"].update({
+                "tumor": os.path.join(patient_dir, "ct_tumor.nii.gz")
+            })
+
+        if os.path.exists(os.path.join(patient_dir, "mri_tumor.nii.gz")):
+            pair["MRI"].update({
+                "tumor": os.path.join(patient_dir, "mri_tumor.nii.gz")
+            })
 
         # Preprocessing for conventional registration usage.
         # print(f"-Bias field correction for patient: {patient}")
@@ -247,7 +248,7 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         patient_dir = create_dir(output_dir, patient)
 
         ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
-        ct_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
+        ct_label = os.path.join(input_dir, patient, "ct_unet3d_liver.nii.gz")
 
         if aligned_mri_dir:
             mri_volume = os.path.join(aligned_mri_dir, patient, "01_Affine_KS", "mri_volume_reg.nii.gz")
