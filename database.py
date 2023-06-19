@@ -7,7 +7,7 @@ from subprocess import run
 import nibabel as nib
 import numpy as np
 
-from utils import setup_parser, validate_paths, rename_instance, create_dir
+from utils import setup_parser, validate_paths, rename_instance, create_dir, delete_dir
 
 
 # Return a list with the files of the directory.
@@ -74,12 +74,6 @@ def fix_filenames(patient_dir, modality):
             os.remove(os.path.join(patient_dir, filename))
             continue
 
-        elif "def" in new_filename:
-            if "foie" in new_filename or "liver" in new_filename:
-                new_filename = f"{modality}_liver_reg.nii.gz"
-            elif "tumeur" in new_filename or "tumor" in new_filename or "tum" in new_filename:
-                new_filename = f"{modality}_tumor_reg.nii.gz"
-
         elif "foie" in new_filename or "liver" in new_filename:
             new_filename = f"{modality}_liver.nii.gz"
 
@@ -91,10 +85,9 @@ def fix_filenames(patient_dir, modality):
         base_file_name = fix_duplicate(patient_dir, base_file_name)
         new_filename = f"{base_file_name}.nii.gz"
         print(f"\t\t\t-Renaming file: {filename} ---> {new_filename}")
-
         rename_instance(patient_dir, filename, new_filename)
 
-        if "tumor.nii.gz" in new_filename:
+        if f"{modality}_tumor" in new_filename:
             segmentations.append(new_filename)
 
     return segmentations
@@ -115,7 +108,7 @@ def add_segmentations(segmentations, volume_path, modality, patient_dir):
 
     # Make sure that the binary image values are [0, 1]
     # If everything went well, delete all the fragmented tumor ROI files.
-    total_roi[np.where(total_roi == np.max(total_roi))] = 1
+    total_roi[total_roi > 1] = 1
     if len(np.unique(total_roi)) > 2:
         print(f"Warning: {np.unique(np.unique(total_roi))}")
     else:
@@ -139,12 +132,12 @@ def extract_from_dicom(study_input, patient_output):
 
     # Extract the volume from the series in nifty format.
     volume_path = ""
-    modality = "mri" if "ceMRI" in study_input else "ct"
+    modality = "mri_def" if "ceMRI-DEF" in study_input else "mri" if "ceMRI" in study_input else "ct"
 
     for series in dicom_series:
         series_path = os.path.join(study_input, series)
         series_files = get_files(series_path)
-        volume_path = os.path.join(patient_output, f"{modality}_volume{'_reg' if series == 'MR_DEF' else ''}.nii.gz")
+        volume_path = os.path.join(patient_output, f"{modality}_volume.nii.gz")
         print(f"\t\t-Extract volume: {series} ---> {volume_path}")
         run(["clitkDicom2Image", *series_files, "-o", volume_path, "-t", "10"])
 
@@ -242,8 +235,8 @@ def main():
     dir_name = os.path.dirname(__file__)
     args = setup_parser(f"{dir_name}/config/database_parser.json")
     input_dir = os.path.join(dir_name, args.i)
+    delete_dir(os.path.join(dir_name, args.o))
     output_dir = create_dir(dir_name, args.o)
-    studies = args.std.split(",")
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
@@ -256,9 +249,6 @@ def main():
 
         # For each study of the patient (ceMRI, SPECT-CT, PET-CT).
         for study in os.listdir(patient_input):
-            if study not in studies:
-                continue
-
             print(f"\t-Study: {study}")
             study_input = os.path.join(patient_input, study)
             extract_from_dicom(study_input, patient_output)
