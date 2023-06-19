@@ -1,6 +1,6 @@
 # Import necessary files and libraries.
 import os
-from subprocess import run
+from subprocess import run, check_output
 
 import numpy as np
 from scipy.ndimage import label
@@ -78,19 +78,16 @@ def remove_redundant_areas(image: np.ndarray, for_which_classes: list, volume_pe
     return image, largest_removed, kept_size
 
 
-def resample_mask(mask, like):
-    pass
-
-
 def main():
     dir_name = os.path.dirname(__file__)
-    args = setup_parser("config/preprocessing_parser.json")
+    args = setup_parser("config/postprocessing_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = create_dir(dir_name, args.o)
 
     masks = os.listdir(input_dir)
-    for idx, mask in enumerate(masks):
-        print(f"Processing {mask}")
+    dice_list = []
+    for mask in masks:
+        print(f"-Processing {mask}")
         mask_path = os.path.join(input_dir, mask)
         cast_to_type([mask_path], "uchar")
 
@@ -106,11 +103,23 @@ def main():
         patient = mask.split(".")[0]
         patient_output = os.path.join(output_dir, patient)
 
-        img_path = os.path.join(patient_output, "ct_auto_generated_liver.nii.gz")
+        img_path = os.path.join(patient_output, "ct_unet3d_liver.nii.gz")
         sitk.WriteImage(img_out_itk, img_path)
 
         like_img = os.path.join(patient_output, "ct_volume.nii.gz")
         run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img, "--interp=0"])
+
+        ground_truth_label = os.path.join(patient_output, "ct_liver.nii.gz")
+        output = check_output(["clitkDice", "-i", img_path, "-j", ground_truth_label])
+        dice = float(output.decode())
+        dice_list.append(dice)
+        print(f"\t-Dice: {dice}")
+
+    total_dice = 0
+    for d in dice_list:
+        total_dice += d
+    avg_dice = total_dice / len(dice_list)
+    print(f"Average Dice: {avg_dice}")
 
 
 # Use this file as a script and run it.

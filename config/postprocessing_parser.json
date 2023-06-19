@@ -1,0 +1,11 @@
+{
+  "description": "Create a database where the processed nifty images are stored.",
+  "arguments": {
+    "required": {
+      "-i": "Path to the generated masks.",
+      "-o": "Path to the directory where the processed masks are going to be saved."
+    },
+    "optional": {
+    }
+  }
+}

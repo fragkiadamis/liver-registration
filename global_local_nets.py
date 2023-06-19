@@ -25,16 +25,16 @@ from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT
 
 print_config()
 
-wandb.init(
-    project="liver-registration",
-    name="globalnet",
-    config={
-        "architecture": ARCHITECTURE,
-        "epochs": NUM_EPOCHS,
-        "learning_rate": INIT_LR,
-        "batch_size": BATCH_SIZE
-    }
-)
+# wandb.init(
+#     project="liver-registration",
+#     name=ARCHITECTURE,
+#     config={
+#         "architecture": ARCHITECTURE,
+#         "epochs": NUM_EPOCHS,
+#         "learning_rate": INIT_LR,
+#         "batch_size": BATCH_SIZE
+#     }
+# )
 
 seed = 42
 torch.manual_seed(seed)
@@ -104,12 +104,6 @@ def transforms():
     return Compose(
         [
             LoadImaged(keys=["fixed_image", "moving_image", "fixed_label", "moving_label"], ensure_channel_first=True),
-            Resized(
-                keys=["fixed_image", "moving_image", "fixed_label", "moving_label"],
-                mode=("trilinear", "trilinear", "nearest", "nearest"),
-                align_corners=(True, True, None, None),
-                spatial_size=(INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, INPUT_IMAGE_DEPTH),
-            ),
         ]
     )
 
@@ -232,23 +226,25 @@ def main():
     validate_paths(input_dir, output_dir)
     create_dir(dir_name, output_dir)
 
+    # Initialize the model.
     model_path = os.path.join(output_dir, args.n)
 
     # Load dataset file paths.
     data = [
         {
-            "fixed_image": os.path.join(input_dir, f"images/{patient}_fixed.nii.gz"),
-            "moving_image": os.path.join(input_dir, f"images/{patient}_moving.nii.gz"),
-            "fixed_label": os.path.join(input_dir, f"labels/{patient}_fixed.nii.gz"),
-            "moving_label": os.path.join(input_dir, f"labels/{patient}_moving.nii.gz"),
+            "fixed_image": os.path.join(input_dir, patient, "ct_volume.nii.gz"),
+            "moving_image": os.path.join(input_dir, patient, "mri_volume.nii.gz"),
+            "fixed_label": os.path.join(input_dir, patient, "ct_liver.nii.gz"),
+            "moving_label": os.path.join(input_dir, patient, "mri_liver.nii.gz"),
             "patient": patient
         }
-        for patient in os.listdir("data/mri_spect_nii_iso")
+        for patient in os.listdir(input_dir)
     ]
+    print(data)
 
     # Split training and validation sets.
-    train_size = floor(len(data) * TRAIN_SPLIT)
-    train_files, val_files = data[:train_size], data[train_size:]
+    # train_size = floor(len(data) * TRAIN_SPLIT)
+    train_files, val_files = data[:1], data[1:]
 
     # Cache the transforms of the datasets.
     train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
@@ -270,7 +266,10 @@ def main():
     }
     criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
     regularization = None if model_name == "globalnet" else BendingEnergyLoss()
-    optimizer = Adam(model.parameters(), lr=INIT_LR, weight_decay=(WD if model_name == "globalnet" else None))
+    if model_name == "globalnet":
+        optimizer = Adam(model.parameters(), lr=INIT_LR, weight_decay=WD)
+    else:
+        optimizer = Adam(model.parameters(), lr=INIT_LR)
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
     dice_values = []
@@ -285,7 +284,7 @@ def main():
         avg_train_loss = train_loss / train_steps
         avg_val_loss = val_loss / val_steps
 
-        # print the model training and validation information
+        # Print the model training and validation information.
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
         print(f"[INFO] Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
         wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice": val_dice_avg}, step=e+1)
