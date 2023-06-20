@@ -165,13 +165,12 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
         if regularization:
             train_loss += 0.5 * regularization(ddf)
 
-        back_calc = time()
         train_loss.backward()
+        back_calc = time()
         optimizer.step()
 
         total_train_loss += train_loss.item()
 
-        timer["Training"] += time() - start_time
         timer["Loading"] += load_time - start_time
         timer["Forward"] += fwd_calc - load_time
         timer["Loss"] += loss_calc - fwd_calc
@@ -216,7 +215,6 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
             dice_metric(y_pred=y_pred, y=fixed_label)
             dice_calc = time()
 
-            timer["Validation"] += time() - start_time
             timer["Loading"] += load_time - start_time
             timer["Forward"] += fwd_calc - load_time
             timer["Loss"] += loss_calc - fwd_calc
