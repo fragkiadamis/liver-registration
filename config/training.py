@@ -1,6 +1,6 @@
 import torch
 
-ARCHITECTURE = "globalnet"
+ARCHITECTURE = "localnet"
 
 TRAIN_SPLIT = 0.80
 VAL_SPLIT = 0.20
@@ -10,7 +10,7 @@ PIN_MEMORY = True if DEVICE == "cuda:0" else False
 
 INIT_LR = 1e-3
 WD = 1e-6
-NUM_EPOCHS = 150
+NUM_EPOCHS = 1500
 BATCH_SIZE = 1
 
 INPUT_IMAGE_WIDTH = 256

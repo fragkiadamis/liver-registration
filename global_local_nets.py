@@ -124,7 +124,7 @@ def forward(sample, model, warp_layer, inference=False):
         return ddf, x_pred, y_pred
 
     # Interpolate using linear interpolation in order for the network to perform backpropagation.
-    y_pred = warp_layer["linear"](y_moving, ddf)
+    y_pred = warp_layer(y_moving, ddf)
 
     return ddf, y_pred
 
@@ -137,13 +137,13 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
     # loop over the training set.
     for batch_data in train_loader:
         # Predict DDF and moving label.
-        ddf, y_pred = forward(batch_data, model, warp_layer)
+        ddf, y_pred = forward(batch_data, model, warp_layer["linear"])
         fixed_label = batch_data["fixed_label"].to(DEVICE)
         y_pred[y_pred > 1] = 1
 
         optimizer.zero_grad()
 
-        # Calculate loss, apply regularization it exists and backpropagate.
+        # Calculate loss, apply regularization and backpropagate.
         train_loss = criterion(y_pred, fixed_label)
         if regularization:
             train_loss += 0.5 * regularization(ddf)
@@ -164,7 +164,7 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
     with torch.no_grad():
         for val_data in val_loader:
             # Predict DDF and moving label.
-            ddf, y_pred = forward(val_data, model, warp_layer)
+            ddf, y_pred = forward(val_data, model, warp_layer["binary"])
             fixed_label = val_data["fixed_label"].to(DEVICE)
             y_pred[y_pred > 1] = 1
 
@@ -240,7 +240,6 @@ def main():
         }
         for patient in os.listdir(input_dir)
     ]
-    print(data)
 
     # Split training and validation sets.
     train_size = floor(len(data) * TRAIN_SPLIT)
