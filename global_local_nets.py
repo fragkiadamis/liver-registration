@@ -44,9 +44,8 @@ random.seed(seed)
 
 
 # Print the time logs.
-def print_time_logs(start_time, timer, phase):
+def print_time_logs(timer):
     print()
-    print(f"[INFO] {phase} Time: {round((time() - start_time) / 60, 2)} minutes.")
     for key, value in timer.items():
         print(f"[INFO] {key} Time: {round(value / 60, 2)} minutes.")
     print()
@@ -143,7 +142,7 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
     model.train()
     total_train_loss = 0
 
-    timer = {"Load": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0}
+    timer = {"Training": 0, "Loading": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0}
     start_time = time()
 
     # loop over the training set.
@@ -172,12 +171,15 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
 
         total_train_loss += train_loss.item()
 
-        timer["Load"] += load_time - start_time
+        timer["Training"] += time() - start_time
+        timer["Loading"] += load_time - start_time
         timer["Forward"] += fwd_calc - load_time
         timer["Loss"] += loss_calc - fwd_calc
         timer["Backpropagation"] += back_calc - loss_calc
 
-    print_time_logs(start_time, timer, "Training")
+        start_time = time()
+
+    print_time_logs(timer)
 
     return total_train_loss
 
@@ -187,7 +189,7 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
     model.eval()
     total_val_loss = 0
 
-    timer = {"Load": 0, "Forward": 0, "Loss": 0, "Dice": 0}
+    timer = {"Validation": 0, "Loading": 0, "Forward": 0, "Loss": 0, "Dice": 0}
     start_time = time()
 
     # Loop over the validation set.
@@ -214,16 +216,19 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
             dice_metric(y_pred=y_pred, y=fixed_label)
             dice_calc = time()
 
-            timer["Load"] += load_time - start_time
+            timer["Validation"] += time() - start_time
+            timer["Loading"] += load_time - start_time
             timer["Forward"] += fwd_calc - load_time
             timer["Loss"] += loss_calc - fwd_calc
             timer["Dice"] += dice_calc - loss_calc
+
+            start_time = time()
 
         # Aggregate dice results.
         dice_avg = dice_metric.aggregate().item()
         dice_metric.reset()
 
-    print_time_logs(start_time, timer, "Validation")
+    print_time_logs(timer)
 
     return total_val_loss, dice_avg
 
