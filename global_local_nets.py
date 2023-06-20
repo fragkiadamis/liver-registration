@@ -15,7 +15,7 @@ from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
 from monai.networks.blocks import Warp
 from monai.networks.nets import GlobalNet, LocalNet
-from monai.transforms import Compose, LoadImaged, Resized
+from monai.transforms import Compose, LoadImaged
 from monai.losses import DiceLoss, MultiScaleLoss, BendingEnergyLoss
 from monai.metrics import DiceMetric
 
@@ -25,16 +25,16 @@ from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT
 
 print_config()
 
-wandb.init(
-    project="liver-registration",
-    name=ARCHITECTURE,
-    config={
-        "architecture": ARCHITECTURE,
-        "epochs": NUM_EPOCHS,
-        "learning_rate": INIT_LR,
-        "batch_size": BATCH_SIZE
-    }
-)
+# wandb.init(
+#     project="liver-registration",
+#     name=ARCHITECTURE,
+#     config={
+#         "architecture": ARCHITECTURE,
+#         "epochs": NUM_EPOCHS,
+#         "learning_rate": INIT_LR,
+#         "batch_size": BATCH_SIZE
+#     }
+# )
 
 seed = 42
 torch.manual_seed(seed)
@@ -45,10 +45,8 @@ random.seed(seed)
 
 # Print the time logs.
 def print_time_logs(timer):
-    print()
     for key, value in timer.items():
         print(f"[INFO] {key} Time: {round(value / 60, 2)} minutes.")
-    print()
 
 
 # Extract the images from the torches and save them.
@@ -86,7 +84,7 @@ def initial_dice(test_loader, dice_metric):
 def initialize_model(model_name):
     if model_name == "globalnet":
         return GlobalNet(
-            depth=5,
+            depth=3,
             image_size=[INPUT_IMAGE_HEIGHT, INPUT_IMAGE_WIDTH, INPUT_IMAGE_DEPTH],
             spatial_dims=3,
             in_channels=2,
@@ -100,9 +98,10 @@ def initialize_model(model_name):
             spatial_dims=3,
             in_channels=2,
             out_channels=3,
-            num_channel_initial=32,
-            extract_levels=(3,),
+            num_channel_initial=16,
+            extract_levels=(2,),
             out_activation=None,
+            pooling=True,
             out_kernel_initializer="zeros",
         ).to(DEVICE)
 
@@ -139,11 +138,12 @@ def forward(sample, model, warp_layer, inference=False):
 
 # Train the model.
 def train(model, train_loader, criterion, regularization, optimizer, warp_layer):
+    start_time = time()
+
     model.train()
     total_train_loss = 0
 
     timer = {"Loading": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0}
-    start_time = time()
 
     # loop over the training set.
     for batch_data in train_loader:
@@ -151,26 +151,25 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
 
         # Predict DDF and moving label.
         ddf, y_pred = forward(batch_data, model, warp_layer["linear"])
-        fwd_calc = time()
-
         fixed_label = batch_data["fixed_label"].to(DEVICE)
         y_pred[y_pred > 1] = 1
+        fwd_calc = time()
 
         optimizer.zero_grad()
 
-        # Calculate loss, apply regularization and perform backpropagation.
+        # Calculate loss.
         train_loss = criterion(y_pred, fixed_label)
-        loss_calc = time()
-
         if regularization:
             train_loss += 0.5 * regularization(ddf)
+        loss_calc = time()
 
+        # Backpropagation
         train_loss.backward()
-        back_calc = time()
         optimizer.step()
-
         total_train_loss += train_loss.item()
+        back_calc = time()
 
+        # Setup timer logs.
         timer["Loading"] += load_time - start_time
         timer["Forward"] += fwd_calc - load_time
         timer["Loss"] += loss_calc - fwd_calc
@@ -178,7 +177,6 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
 
         start_time = time()
 
-    print("***TRAINING***")
     print_time_logs(timer)
 
     return total_train_loss
@@ -186,11 +184,12 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
 
 # Validate the model.
 def validate(model, val_loader, criterion, regularization, warp_layer, dice_metric):
+    start_time = time()
+
     model.eval()
     total_val_loss = 0
 
     timer = {"Loading": 0, "Forward": 0, "Loss": 0, "Dice": 0}
-    start_time = time()
 
     # Loop over the validation set.
     with torch.no_grad():
@@ -199,22 +198,21 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
 
             # Predict DDF and moving label.
             ddf, y_pred = forward(val_data, model, warp_layer["binary"])
-            fwd_calc = time()
-
             fixed_label = val_data["fixed_label"].to(DEVICE)
             y_pred[y_pred > 1] = 1
+            fwd_calc = time()
 
-            # Calculate loss, apply regularization it exists.
+            # Calculate loss.
             val_loss = criterion(y_pred, fixed_label)
-            loss_calc = time()
-
             if regularization:
                 val_loss += 0.5 * regularization(ddf)
-            total_val_loss += val_loss.item()
+            loss_calc = time()
 
             # Calculate dice.
             dice_metric(y_pred=y_pred, y=fixed_label)
             dice_calc = time()
+
+            total_val_loss += val_loss.item()
 
             timer["Loading"] += load_time - start_time
             timer["Forward"] += fwd_calc - load_time
@@ -227,7 +225,6 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
         dice_avg = dice_metric.aggregate().item()
         dice_metric.reset()
 
-    print("***VALIDATION***")
     print_time_logs(timer)
 
     return total_val_loss, dice_avg
@@ -325,19 +322,26 @@ def main():
 
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
-        epoch_time = time()
+        epoch_start_time = time()
 
         # Train and validate the model.
+        print("\n***TRAINING***")
         train_loss = train(model, train_loader, criterion, regularization, optimizer, warp_layer)
+        print(f"[INFO] Training time: {round((time() - epoch_start_time) / 60, 2)} minutes")
+
+        print("***VALIDATION***")
+        val_start_time = time()
         val_loss, val_dice_avg = validate(model, val_loader, criterion, regularization, warp_layer, dice_metric)
+        print(f"[INFO] Validation time: {round((time() - val_start_time) / 60, 2)} minutes")
 
         avg_train_loss = train_loss / train_steps
         avg_val_loss = val_loss / val_steps
 
         # Print the model training and validation information.
+        print("***EPOCH***")
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
         print(f"[INFO] Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
-        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice": val_dice_avg}, step=e+1)
+        # wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice": val_dice_avg}, step=e+1)
 
         # Follow the epoch with the best dice and save the respective weights.
         dice_values.append(val_dice_avg)
@@ -346,11 +350,11 @@ def main():
             torch.save(model.state_dict(), f"{model_path}_best.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
-        wandb.log({"best_dice": best_dice}, step=e+1)
-        print(f"[INFO] Epoch time: {round((time() - epoch_time) / 60, 2)} minutes")
+        # wandb.log({"best_dice": best_dice}, step=e+1)
+        print(f"[INFO] Epoch time: {round((time() - epoch_start_time) / 60, 2)} minutes")
 
-    print(f"[INFO] total time taken to train the model: {round(((time() - start_time) / 60) / 60, 2)} hours")
-    wandb.finish()
+    print(f"\n[INFO] total time taken to train the model: {round(((time() - start_time) / 60) / 60, 2)} hours")
+    # wandb.finish()
 
     # Load saved model.
     model.load_state_dict(torch.load(f"{model_path}_best.pth"))
