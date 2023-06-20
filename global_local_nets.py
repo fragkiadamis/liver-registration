@@ -25,16 +25,16 @@ from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT
 
 print_config()
 
-# wandb.init(
-#     project="liver-registration",
-#     name=ARCHITECTURE,
-#     config={
-#         "architecture": ARCHITECTURE,
-#         "epochs": NUM_EPOCHS,
-#         "learning_rate": INIT_LR,
-#         "batch_size": BATCH_SIZE
-#     }
-# )
+wandb.init(
+    project="liver-registration",
+    name=ARCHITECTURE,
+    config={
+        "architecture": ARCHITECTURE,
+        "epochs": NUM_EPOCHS,
+        "learning_rate": INIT_LR,
+        "batch_size": BATCH_SIZE
+    }
+)
 
 seed = 42
 torch.manual_seed(seed)
@@ -243,8 +243,8 @@ def main():
     print(data)
 
     # Split training and validation sets.
-    # train_size = floor(len(data) * TRAIN_SPLIT)
-    train_files, val_files = data[:1], data[1:]
+    train_size = floor(len(data) * TRAIN_SPLIT)
+    train_files, val_files = data[:train_size], data[train_size:]
 
     # Cache the transforms of the datasets.
     train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
