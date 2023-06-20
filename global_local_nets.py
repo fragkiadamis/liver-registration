@@ -43,6 +43,13 @@ np.random.seed(seed)
 random.seed(seed)
 
 
+# Print the time logs.
+def print_time_logs(start_time, timer, phase):
+    print(f"[INFO] {phase} Time: {round((time() - start_time) / 60, 2)} minutes.")
+    for key, value in timer:
+        print(f"[INFO] {key} Time: {round(value / 60, 2)} minutes.")
+
+
 # Extract the images from the torches and save them.
 def save_predictions(predictions, output):
     for prediction in predictions:
@@ -134,10 +141,17 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
     model.train()
     total_train_loss = 0
 
+    timer = {"Load": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0}
+    start_time = time()
+
     # loop over the training set.
     for batch_data in train_loader:
+        load_time = time()
+
         # Predict DDF and moving label.
         ddf, y_pred = forward(batch_data, model, warp_layer["linear"])
+        fwd_calc = time()
+
         fixed_label = batch_data["fixed_label"].to(DEVICE)
         y_pred[y_pred > 1] = 1
 
@@ -145,12 +159,23 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
 
         # Calculate loss, apply regularization and backpropagate.
         train_loss = criterion(y_pred, fixed_label)
+        loss_calc = time()
+
         if regularization:
             train_loss += 0.5 * regularization(ddf)
+
+        back_calc = time()
         train_loss.backward()
         optimizer.step()
 
         total_train_loss += train_loss.item()
+
+        timer["Load"] += load_time - start_time
+        timer["Forward"] += fwd_calc - load_time
+        timer["Loss"] += loss_calc - fwd_calc
+        timer["Backpropagation"] += back_calc - loss_calc
+
+    print_time_logs(start_time, timer, "Training")
 
     return total_train_loss
 
@@ -160,26 +185,43 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
     model.eval()
     total_val_loss = 0
 
+    timer = {"Load": 0, "Forward": 0, "Loss": 0, "Dice": 0}
+    start_time = time()
+
     # Loop over the validation set.
     with torch.no_grad():
         for val_data in val_loader:
+            load_time = time()
+
             # Predict DDF and moving label.
             ddf, y_pred = forward(val_data, model, warp_layer["binary"])
+            fwd_calc = time()
+
             fixed_label = val_data["fixed_label"].to(DEVICE)
             y_pred[y_pred > 1] = 1
 
             # Calculate loss, apply regularization it exists.
             val_loss = criterion(y_pred, fixed_label)
+            loss_calc = time()
+
             if regularization:
                 val_loss += 0.5 * regularization(ddf)
             total_val_loss += val_loss.item()
 
             # Calculate dice.
             dice_metric(y_pred=y_pred, y=fixed_label)
+            dice_calc = time()
+
+            timer["Load"] += load_time - start_time
+            timer["Forward"] += fwd_calc - load_time
+            timer["Loss"] += loss_calc - fwd_calc
+            timer["Dice"] += dice_calc - loss_calc
 
         # Aggregate dice results.
         dice_avg = dice_metric.aggregate().item()
         dice_metric.reset()
+
+    print_time_logs(start_time, timer, "Validation")
 
     return total_val_loss, dice_avg
 
@@ -276,6 +318,7 @@ def main():
 
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
+        epoch_time = time()
         # Train and validate the model.
         train_loss = train(model, train_loader, criterion, regularization, optimizer, warp_layer)
         val_loss, val_dice_avg = validate(model, val_loader, criterion, regularization, warp_layer, dice_metric)
@@ -296,9 +339,9 @@ def main():
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
         wandb.log({"best_dice": best_dice}, step=e+1)
+        print(f"[INFO] Epoch time: {round((time() - epoch_time) / 60, 2)} minutes")
 
-    end_time = time()
-    print(f"[INFO] total time taken to train the model: {round(((end_time - start_time) / 60) / 60, 2)} hours")
+    print(f"[INFO] total time taken to train the model: {round(((time() - start_time) / 60) / 60, 2)} hours")
     wandb.finish()
 
     # Load saved model.
