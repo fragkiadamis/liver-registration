@@ -142,7 +142,7 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
     model.train()
     total_train_loss = 0
 
-    timer = {"Training": 0, "Loading": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0}
+    timer = {"Loading": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0}
     start_time = time()
 
     # loop over the training set.
@@ -178,6 +178,7 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
 
         start_time = time()
 
+    print("***TRAINING***")
     print_time_logs(timer)
 
     return total_train_loss
@@ -188,7 +189,7 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
     model.eval()
     total_val_loss = 0
 
-    timer = {"Validation": 0, "Loading": 0, "Forward": 0, "Loss": 0, "Dice": 0}
+    timer = {"Loading": 0, "Forward": 0, "Loss": 0, "Dice": 0}
     start_time = time()
 
     # Loop over the validation set.
@@ -226,6 +227,7 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
         dice_avg = dice_metric.aggregate().item()
         dice_metric.reset()
 
+    print("***VALIDATION***")
     print_time_logs(timer)
 
     return total_val_loss, dice_avg
