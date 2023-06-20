@@ -25,16 +25,16 @@ from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT
 
 print_config()
 
-# wandb.init(
-#     project="liver-registration",
-#     name=ARCHITECTURE,
-#     config={
-#         "architecture": ARCHITECTURE,
-#         "epochs": NUM_EPOCHS,
-#         "learning_rate": INIT_LR,
-#         "batch_size": BATCH_SIZE
-#     }
-# )
+wandb.init(
+    project="liver-registration",
+    name=ARCHITECTURE,
+    config={
+        "architecture": ARCHITECTURE,
+        "epochs": NUM_EPOCHS,
+        "learning_rate": INIT_LR,
+        "batch_size": BATCH_SIZE
+    }
+)
 
 seed = 42
 torch.manual_seed(seed)
@@ -341,7 +341,7 @@ def main():
         print("***EPOCH***")
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
         print(f"[INFO] Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
-        # wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice": val_dice_avg}, step=e+1)
+        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice": val_dice_avg}, step=e+1)
 
         # Follow the epoch with the best dice and save the respective weights.
         dice_values.append(val_dice_avg)
@@ -350,11 +350,11 @@ def main():
             torch.save(model.state_dict(), f"{model_path}_best.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
-        # wandb.log({"best_dice": best_dice}, step=e+1)
+        wandb.log({"best_dice": best_dice}, step=e+1)
         print(f"[INFO] Epoch time: {round((time() - epoch_start_time) / 60, 2)} minutes")
 
     print(f"\n[INFO] total time taken to train the model: {round(((time() - start_time) / 60) / 60, 2)} hours")
-    # wandb.finish()
+    wandb.finish()
 
     # Load saved model.
     model.load_state_dict(torch.load(f"{model_path}_best.pth"))
