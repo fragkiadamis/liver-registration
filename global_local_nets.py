@@ -45,9 +45,11 @@ random.seed(seed)
 
 # Print the time logs.
 def print_time_logs(start_time, timer, phase):
+    print()
     print(f"[INFO] {phase} Time: {round((time() - start_time) / 60, 2)} minutes.")
     for key, value in timer:
         print(f"[INFO] {key} Time: {round(value / 60, 2)} minutes.")
+    print()
 
 
 # Extract the images from the torches and save them.
@@ -157,7 +159,7 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
 
         optimizer.zero_grad()
 
-        # Calculate loss, apply regularization and backpropagate.
+        # Calculate loss, apply regularization and perform backpropagation.
         train_loss = criterion(y_pred, fixed_label)
         loss_calc = time()
 
@@ -319,6 +321,7 @@ def main():
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
         epoch_time = time()
+
         # Train and validate the model.
         train_loss = train(model, train_loader, criterion, regularization, optimizer, warp_layer)
         val_loss, val_dice_avg = validate(model, val_loader, criterion, regularization, warp_layer, dice_metric)
