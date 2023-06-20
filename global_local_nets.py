@@ -26,16 +26,16 @@ from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT
 
 print_config()
 
-# wandb.init(
-#     project="liver-registration",
-#     name=ARCHITECTURE,
-#     config={
-#         "architecture": ARCHITECTURE,
-#         "epochs": NUM_EPOCHS,
-#         "learning_rate": INIT_LR,
-#         "batch_size": BATCH_SIZE
-#     }
-# )
+wandb.init(
+    project="liver-registration",
+    name=ARCHITECTURE,
+    config={
+        "architecture": ARCHITECTURE,
+        "epochs": NUM_EPOCHS,
+        "learning_rate": INIT_LR,
+        "batch_size": BATCH_SIZE
+    }
+)
 
 seed = 42
 torch.manual_seed(seed)
