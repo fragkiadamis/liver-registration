@@ -47,7 +47,7 @@ random.seed(seed)
 def print_time_logs(start_time, timer, phase):
     print()
     print(f"[INFO] {phase} Time: {round((time() - start_time) / 60, 2)} minutes.")
-    for key, value in timer:
+    for key, value in timer.items():
         print(f"[INFO] {key} Time: {round(value / 60, 2)} minutes.")
     print()
 
