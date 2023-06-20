@@ -1,5 +1,6 @@
 import os
 import random
+from datetime import datetime
 from time import time
 from math import floor
 
@@ -25,16 +26,16 @@ from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, INPUT
 
 print_config()
 
-wandb.init(
-    project="liver-registration",
-    name=ARCHITECTURE,
-    config={
-        "architecture": ARCHITECTURE,
-        "epochs": NUM_EPOCHS,
-        "learning_rate": INIT_LR,
-        "batch_size": BATCH_SIZE
-    }
-)
+# wandb.init(
+#     project="liver-registration",
+#     name=ARCHITECTURE,
+#     config={
+#         "architecture": ARCHITECTURE,
+#         "epochs": NUM_EPOCHS,
+#         "learning_rate": INIT_LR,
+#         "batch_size": BATCH_SIZE
+#     }
+# )
 
 seed = 42
 torch.manual_seed(seed)
@@ -101,7 +102,6 @@ def initialize_model(model_name):
             num_channel_initial=16,
             extract_levels=(2,),
             out_activation=None,
-            pooling=True,
             out_kernel_initializer="zeros",
         ).to(DEVICE)
 
@@ -131,7 +131,7 @@ def forward(sample, model, warp_layer, inference=False):
         return ddf, x_pred, y_pred
 
     # Interpolate using linear interpolation in order for the network to perform backpropagation.
-    y_pred = warp_layer(y_moving, ddf)
+    y_pred = warp_layer["linear"](y_moving, ddf)
 
     return ddf, y_pred
 
@@ -150,7 +150,7 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer)
         load_time = time()
 
         # Predict DDF and moving label.
-        ddf, y_pred = forward(batch_data, model, warp_layer["linear"])
+        ddf, y_pred = forward(batch_data, model, warp_layer)
         fixed_label = batch_data["fixed_label"].to(DEVICE)
         y_pred[y_pred > 1] = 1
         fwd_calc = time()
@@ -197,7 +197,7 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
             load_time = time()
 
             # Predict DDF and moving label.
-            ddf, y_pred = forward(val_data, model, warp_layer["binary"])
+            ddf, y_pred = forward(val_data, model, warp_layer)
             fixed_label = val_data["fixed_label"].to(DEVICE)
             y_pred[y_pred > 1] = 1
             fwd_calc = time()
@@ -273,7 +273,8 @@ def main():
     create_dir(dir_name, output_dir)
 
     # Initialize the model.
-    model_path = os.path.join(output_dir, args.n)
+    models_dir = create_dir(output_dir, args.n)
+    current_model_dir = create_dir(models_dir, str(datetime.now().strftime("%d-%m-%Y_%H:%M:%S")))
 
     # Load dataset file paths.
     data = [
@@ -347,7 +348,7 @@ def main():
         dice_values.append(val_dice_avg)
         if val_dice_avg > best_dice:
             best_dice = val_dice_avg
-            torch.save(model.state_dict(), f"{model_path}_best.pth")
+            torch.save(model.state_dict(), f"{current_model_dir}/best_model.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
         wandb.log({"best_dice": best_dice}, step=e+1)
@@ -357,7 +358,7 @@ def main():
     wandb.finish()
 
     # Load saved model.
-    model.load_state_dict(torch.load(f"{model_path}_best.pth"))
+    model.load_state_dict(torch.load(f"{current_model_dir}/best_model.pth"))
 
     # Calculate initial dice average.
     init_dice_avg = initial_dice(val_loader, dice_metric)
