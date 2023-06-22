@@ -260,7 +260,8 @@ def main():
 
     # Initialize the model.
     models_dir = create_dir(output_dir, model_name)
-    current_model_dir = create_dir(models_dir, str(datetime.now().strftime("%d-%m-%Y_%H:%M:%S")))
+    timestamp_dir = create_dir(models_dir, str(datetime.now().strftime("%d-%m-%Y_%H:%M:%S")))
+    fold_dir = create_dir(timestamp_dir, f"fold_{fold}")
 
     # Initialize wandb.
     init_wandb(fold)
@@ -348,7 +349,7 @@ def main():
         dice_values.append(val_dice_avg)
         if val_dice_avg > best_dice:
             best_dice = val_dice_avg
-            torch.save(model.state_dict(), f"{current_model_dir}/best_model.pth")
+            torch.save(model.state_dict(), f"{fold_dir}/best_model.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
         wandb.log({"best_dice": best_dice}, step=e + 1)
@@ -358,7 +359,7 @@ def main():
     wandb.finish()
 
     # Load saved model.
-    model.load_state_dict(torch.load(f"{current_model_dir}/best_model.pth"))
+    model.load_state_dict(torch.load(f"{fold_dir}/best_model.pth"))
 
     # Calculate initial dice average.
     init_dice_avg = initial_dice(val_loader, dice_metric)
@@ -369,7 +370,8 @@ def main():
     print(f"[INFO] Average Final Dice: {avg_dice}")
 
     # Save the predictions.
-    save_predictions(predictions, output_dir)
+    raw_dir = create_dir(fold_dir, "validation_raw")
+    save_predictions(predictions, raw_dir)
 
 
 # Use this file as a script and run it.
