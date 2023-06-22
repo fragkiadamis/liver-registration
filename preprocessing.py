@@ -248,7 +248,8 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         patient_dir = create_dir(output_dir, patient)
 
         ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
-        ct_label = os.path.join(input_dir, patient, "ct_unet3d_liver.nii.gz")
+        ct_gt_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
+        ct_unet3d_label = os.path.join(input_dir, patient, "ct_unet3d_liver.nii.gz")
 
         if aligned_mri_dir:
             mri_volume = os.path.join(aligned_mri_dir, patient, "01_Affine_KS", "mri_volume_reg.nii.gz")
@@ -260,7 +261,8 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         pair = {
             "CT": {
                 "volume": copy(ct_volume, os.path.join(patient_dir, "ct_volume.nii.gz")),
-                "liver": copy(ct_label, os.path.join(patient_dir, "ct_liver.nii.gz"))
+                "gt_liver": copy(ct_gt_label, os.path.join(patient_dir, "ct_liver.nii.gz")),
+                "unet3d_liver": copy(ct_unet3d_label, os.path.join(patient_dir, "ct_unet3d_liver.nii.gz"))
             },
             "MRI": {
                 "volume": copy(mri_volume, os.path.join(patient_dir, "mri_volume.nii.gz")),

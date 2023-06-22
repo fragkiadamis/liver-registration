@@ -4,7 +4,8 @@
     "required": {
       "-i": "Path to the training dataset.",
       "-o": "Path to the models output.",
-      "-n": "Model name."
+      "-f": "Fold Number.",
+      "-n": "Model Name."
     },
     "optional": {
     }
