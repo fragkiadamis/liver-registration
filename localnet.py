@@ -193,7 +193,7 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
             loss_calc = time()
 
             # Calculate dice.
-            fixed_gt_label = val_data["fixed_gt_label"]
+            fixed_gt_label = val_data["fixed_gt_label"].to(DEVICE)
             dice_metric(y_pred=y_pred_bn, y=fixed_gt_label)
             dice_calc = time()
 
