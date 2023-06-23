@@ -161,7 +161,7 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer,
         timer["Forward"] += fwd_calc - load_time
         timer["Loss"] += loss_calc - fwd_calc
         timer["Backpropagation"] += back_calc - loss_calc
-        timer["Dice"] += dice_calc - loss_calc
+        timer["Dice"] += dice_calc - back_calc
 
         start_time = time()
 
