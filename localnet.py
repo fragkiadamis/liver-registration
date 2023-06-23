@@ -30,7 +30,8 @@ print_config()
 def init_wandb(fold):
     wandb.init(
         project="liver-registration",
-        name=f"{ARCHITECTURE}_fold{fold}",
+        name=f"fold_{fold}",
+        tags=["localnet", "registration"],
         config={
             "architecture": ARCHITECTURE,
             "epochs": NUM_EPOCHS,
