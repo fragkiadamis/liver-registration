@@ -269,7 +269,7 @@ def main():
     fold_dir = create_dir(timestamp_dir, f"fold_{fold}")
 
     # Initialize wandb.
-    # init_wandb(fold)
+    init_wandb(fold)
 
     # Load dataset file paths.
     data = [
