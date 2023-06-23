@@ -103,7 +103,7 @@ def transforms():
 
 
 # Forward the input to the model to get the prediction.
-def forward(sample, model, warp_layer, phase):
+def forward(sample, model, warp_layer, inference=False):
     x_fixed = sample["fixed_image"].to(DEVICE)
     x_moving = sample["moving_image"].to(DEVICE)
     y_moving = sample["moving_label"].to(DEVICE)
@@ -111,61 +111,66 @@ def forward(sample, model, warp_layer, phase):
     # Predict DDF from fixed and moving images
     ddf = model(torch.cat((x_fixed, x_moving), dim=1))
 
-    pred = [ddf]
-    if phase == "training":
-        pred.append(warp_layer["linear"](y_moving, ddf))
-    elif phase == "validation":
-        pred.append(warp_layer["linear"](y_moving, ddf))
-        pred.append(warp_layer["binary"](y_moving, ddf))
-    elif phase == "inference":
-        pred.append(warp_layer["linear"](x_moving, ddf))
-        pred.append(warp_layer["binary"](y_moving, ddf))
-
-    return pred
+    if inference:
+        x_pred = warp_layer["linear"](x_moving, ddf)
+        y_pred = warp_layer["binary"](y_moving, ddf)
+        return ddf, x_pred, y_pred
+    else:
+        y_pred_ln = warp_layer["linear"](y_moving, ddf)
+        y_pred_bn = warp_layer["binary"](y_moving, ddf)
+        return ddf, y_pred_ln, y_pred_bn
 
 
 # Train the model.
-def train(model, train_loader, criterion, regularization, optimizer, warp_layer):
+def train(model, train_loader, criterion, regularization, optimizer, warp_layer, dice_metric):
     start_time = time()
 
     model.train()
     total_train_loss = 0
 
-    timer = {"Loading": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0}
+    timer = {"Loading": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0, "Dice": 0}
 
     # loop over the training set.
     for batch_data in train_loader:
         load_time = time()
 
         # Predict DDF and moving label.
-        ddf, y_pred = forward(batch_data, model, warp_layer, phase="training")
+        ddf, y_pred_ln, y_pred_bn = forward(batch_data, model, warp_layer)
         fixed_unet3d_label = batch_data["fixed_unet3d_label"].to(DEVICE)
-        y_pred[y_pred > 1] = 1
+        y_pred_ln[y_pred_ln > 1] = 1
         fwd_calc = time()
 
         optimizer.zero_grad()
 
-        # Calculate loss.
-        train_loss = criterion(y_pred, fixed_unet3d_label) + (0.5 * regularization(ddf))
+        # Calculate loss and backpropagation.
+        train_loss = criterion(y_pred_ln, fixed_unet3d_label) + (0.5 * regularization(ddf))
         loss_calc = time()
-
-        # Backpropagation
         train_loss.backward()
         optimizer.step()
         total_train_loss += train_loss.item()
         back_calc = time()
+
+        # Calculate dice accuracy.
+        fixed_gt_label = batch_data["fixed_gt_label"].to(DEVICE)
+        dice_metric(y_pred=y_pred_bn, y=fixed_gt_label)
+        dice_calc = time()
 
         # Setup timer logs.
         timer["Loading"] += load_time - start_time
         timer["Forward"] += fwd_calc - load_time
         timer["Loss"] += loss_calc - fwd_calc
         timer["Backpropagation"] += back_calc - loss_calc
+        timer["Dice"] += dice_calc - loss_calc
 
         start_time = time()
 
+    # Aggregate dice results.
+    dice_avg = dice_metric.aggregate().item()
+    dice_metric.reset()
+
     print_time_logs(timer)
 
-    return total_train_loss
+    return total_train_loss, dice_avg
 
 
 # Validate the model.
@@ -183,21 +188,20 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
             load_time = time()
 
             # Predict DDF and moving label.
-            ddf, y_pred_ln, y_pred_bn = forward(val_data, model, warp_layer, phase="validation")
+            ddf, y_pred_ln, y_pred_bn = forward(val_data, model, warp_layer)
             fixed_unet3d_label = val_data["fixed_unet3d_label"].to(DEVICE)
             y_pred_ln[y_pred_ln > 1] = 1
             fwd_calc = time()
 
             # Calculate loss.
             val_loss = criterion(y_pred_ln, fixed_unet3d_label) + (0.5 * regularization(ddf))
+            total_val_loss += val_loss.item()
             loss_calc = time()
 
-            # Calculate dice.
+            # Calculate dice accuracy.
             fixed_gt_label = val_data["fixed_gt_label"].to(DEVICE)
             dice_metric(y_pred=y_pred_bn, y=fixed_gt_label)
             dice_calc = time()
-
-            total_val_loss += val_loss.item()
 
             timer["Loading"] += load_time - start_time
             timer["Forward"] += fwd_calc - load_time
@@ -224,7 +228,7 @@ def inference_model(model, test_loader, warp_layer, dice_metric):
         predictions = []
         for test_data in test_loader:
             # Predict moving image and moving label.
-            ddf, x_pred, y_pred = forward(test_data, model, warp_layer, phase="inference")
+            ddf, x_pred, y_pred = forward(test_data, model, warp_layer, inference=True)
             fixed_gt_label = test_data["fixed_gt_label"].to(DEVICE)
 
             # Calculate dice on the predicted label.
@@ -264,7 +268,7 @@ def main():
     fold_dir = create_dir(timestamp_dir, f"fold_{fold}")
 
     # Initialize wandb.
-    init_wandb(fold)
+    # init_wandb(fold)
 
     # Load dataset file paths.
     data = [
@@ -284,7 +288,11 @@ def main():
     train_idx, val_idx = list(k_folds.split(data))[fold]
     train_files, val_files = [data[i] for i in train_idx], [data[i] for i in val_idx]
 
-    print("Validation Patients:")
+    print("***Training Patients***")
+    for item in train_files:
+        print(item["patient"])
+
+    print("***Validation Patients***")
     for item in val_files:
         print(item["patient"])
 
@@ -328,7 +336,8 @@ def main():
 
         # Train and validate the model.
         print("\n***TRAINING***")
-        train_loss = train(model, train_loader, criterion, regularization, optimizer, warp_layer)
+        train_loss, train_dice_avg = train(model, train_loader, criterion,
+                                           regularization, optimizer, warp_layer, dice_metric)
         print(f"[INFO] Training time: {round((time() - epoch_start_time) / 60, 2)} minutes")
 
         print("***VALIDATION***")
@@ -343,7 +352,10 @@ def main():
         print("***EPOCH***")
         print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
         print(f"[INFO] Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
-        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "dice": val_dice_avg}, step=e + 1)
+        wandb.log({
+            "train_loss": avg_train_loss, "val_loss": avg_val_loss,
+            "val_dice_accuracy": val_dice_avg, "train_dice_accuracy": train_dice_avg
+        }, step=e + 1)
 
         # Follow the epoch with the best dice and save the respective weights.
         dice_values.append(val_dice_avg)
