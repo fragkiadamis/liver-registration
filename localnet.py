@@ -73,7 +73,7 @@ def save_predictions(predictions, output):
 # Calculate the initial dice average on the data.
 def initial_dice(test_loader, dice_metric):
     for test_data in test_loader:
-        fixed_label = test_data["fixed_label"].to(DEVICE)
+        fixed_label = test_data["fixed_gt_label"].to(DEVICE)
         moving_label = test_data["moving_label"].to(DEVICE)
 
         dice = dice_metric(y_pred=moving_label, y=fixed_label)
