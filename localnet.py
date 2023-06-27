@@ -376,7 +376,7 @@ def main():
         with open(f"{patient_dir}/evaluation.json", "w") as fp:
             json.dump(results, fp)
 
-        print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['Initial']}")
+        print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['LocalNet']}")
 
 
 # Use this file as a script and run it.

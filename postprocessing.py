@@ -1,5 +1,7 @@
 # Import necessary files and libraries.
+import json
 import os
+from shutil import copy
 from subprocess import run, check_output
 
 import numpy as np
@@ -7,6 +9,7 @@ from scipy.ndimage import label
 import SimpleITK as sitk
 
 from preprocessing import cast_to_type
+from registration import calculate_metrics
 from utils import setup_parser, create_dir
 
 
@@ -78,16 +81,10 @@ def remove_redundant_areas(image: np.ndarray, for_which_classes: list, volume_pe
     return image, largest_removed, kept_size
 
 
-def main():
-    dir_name = os.path.dirname(__file__)
-    args = setup_parser("config/postprocessing_parser.json")
-    input_dir = os.path.join(dir_name, args.i)
-    output_dir = create_dir(dir_name, args.o)
-
-    masks = os.listdir(input_dir)
+def postprocess_segmentations(input_dir, output_dir):
     dice_list = []
+    masks = os.listdir(input_dir)
     for mask in masks:
-        print(f"-Processing {mask}")
         mask_path = os.path.join(input_dir, mask)
         cast_to_type([mask_path], "uchar")
 
@@ -113,13 +110,58 @@ def main():
         output = check_output(["clitkDice", "-i", img_path, "-j", ground_truth_label])
         dice = float(output.decode())
         dice_list.append(dice)
-        print(f"\t-Dice: {dice}")
+        print(f"\t-{mask} Dice: {dice}")
 
-    total_dice = 0
-    for d in dice_list:
-        total_dice += d
-    avg_dice = total_dice / len(dice_list)
-    print(f"Average Dice: {avg_dice}")
+    return dice_list
+
+
+# Resample images to 512x512x448 after deep learning registration.
+def postprocess_registrations(input_dir, output_dir):
+    for patient in os.listdir(input_dir):
+        print(f"Resampling patient: {patient}")
+        patient_dir = os.path.join(input_dir, patient)
+        mri_volume_pred = os.path.join(patient_dir, "mri_volume_pred.nii.gz")
+        mri_label_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
+
+        patient_output_dir = os.path.join(output_dir, patient)
+        mri_volume_out = os.path.join(patient_output_dir, "mri_volume_pred.nii.gz")
+        mri_label_out = os.path.join(patient_output_dir, "mri_liver_pred.nii.gz")
+
+        ct_ref_path = os.path.join(patient_output_dir, "ct_volume.nii.gz")
+        ct_gt_label = os.path.join(patient_output_dir, "ct_liver.nii.gz")
+
+        arg_list = [
+            "clitkAffineTransform", "-i", mri_volume_pred, "-o", mri_volume_out, "--interp=2", "-l", ct_ref_path
+        ]
+        run(arg_list)
+        arg_list = [
+            "clitkAffineTransform", "-i", mri_label_pred, "-o", mri_label_out, "--interp=0", "-l", ct_ref_path
+        ]
+        run(arg_list)
+
+        results = {
+            "liver": {
+                "LocalNet": calculate_metrics(ct_gt_label, mri_label_out)
+            }
+        }
+        print(results)
+
+        with open(f"{patient_output_dir}/evaluation.json", "w") as fp:
+            json.dump(results, fp)
+
+
+def main():
+    dir_name = os.path.dirname(__file__)
+    args = setup_parser("config/postprocessing_parser.json")
+    input_dir = os.path.join(dir_name, args.i)
+    output_dir = create_dir(dir_name, args.o)
+    postprocessing_type = args.t
+
+    dice_list = []
+    if postprocessing_type == "seg":
+        dice_list = postprocess_segmentations(input_dir, output_dir)
+    elif postprocessing_type == "reg":
+        postprocess_registrations(input_dir, output_dir)
 
 
 # Use this file as a script and run it.

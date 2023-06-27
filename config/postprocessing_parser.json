@@ -3,7 +3,8 @@
   "arguments": {
     "required": {
       "-i": "Path to the generated masks.",
-      "-o": "Path to the directory where the processed masks are going to be saved."
+      "-o": "Path to the directory where the processed masks are going to be saved.",
+      "-t": "Post processing for registration (-t reg) or segmentation (-t seg)."
     },
     "optional": {
     }
