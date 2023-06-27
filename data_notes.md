@@ -38,23 +38,22 @@
 15. JohnDoe_ANON65060
 
 ## Validation Folds.
-|      Fold 0       |      Fold 1       |      Fold 2       | Fold 3 |      Fold 4       | 
-|:-----------------:|:-----------------:|:-----------------:|:------:|:-----------------:|
-| JohnDoe_ANON98854 | JohnDoe_ANON55215 | JohnDoe_ANON70417 |        | JohnDoe_ANON83160 |
-| JohnDoe_ANON80520 | JohnDoe_ANON76802 | JohnDoe_ANON35169 |        | JohnDoe_ANON10507 | 
-| JohnDoe_ANON65060 | JohnDoe_ANON59591 | JohnDoe_ANON84994 |        | JohnDoe_ANON27183 | 
-| JohnDoe_ANON62642 | JohnDoe_ANON11762 | JohnDoe_ANON24065 |        | JohnDoe_ANON39011 |
-| JohnDoe_ANON29513 | JohnDoe_ANON45396 | JaneDoe_ANON82950 |        | JohnDoe_ANON96978 |
-| JohnDoe_ANON87212 | JohnDoe_ANON53833 | JohnDoe_ANON36736 |        | JohnDoe_ANON44625 |
-| JohnDoe_ANON32161 | JohnDoe_ANON87639 | JohnDoe_ANON92476 |        | JaneDoe_ANON12304 |
-| JohnDoe_ANON15323 | JohnDoe_ANON91519 | JohnDoe_ANON42529 |        | JohnDoe_ANON27373 |
-| JaneDoe_ANON83544 | JohnDoe_ANON55240 | JohnDoe_ANON78721 |        | JohnDoe_ANON55831 |
-| JohnDoe_ANON87883 | JohnDoe_ANON13231 | JohnDoe_ANON77296 |        | JohnDoe_ANON81710 |
-| JohnDoe_ANON87928 | JohnDoe_ANON27417 | JohnDoe_ANON74328 |        | JohnDoe_ANON64482 |
-| JaneDoe_ANON69091 | JohnDoe_ANON21673 | JohnDoe_ANON15860 |        | JohnDoe_ANON45696 |
-| JohnDoe_ANON46160 | JohnDoe_ANON98767 | JohnDoe_ANON72295 |        | JohnDoe_ANON22228 |
-| JohnDoe_ANON23808 | JaneDoe_ANON34438 | JaneDoe_ANON56995 |        |         -         |
-
+|      Fold 0       |      Fold 1       |      Fold 2       |      Fold 3       |      Fold 4       | 
+|:-----------------:|:-----------------:|:-----------------:|:-----------------:|:-----------------:|
+| JohnDoe_ANON98854 | JohnDoe_ANON55215 | JohnDoe_ANON70417 | JohnDoe_ANON50337 | JohnDoe_ANON83160 |
+| JohnDoe_ANON80520 | JohnDoe_ANON76802 | JohnDoe_ANON35169 | JohnDoe_ANON55098 | JohnDoe_ANON10507 | 
+| JohnDoe_ANON65060 | JohnDoe_ANON59591 | JohnDoe_ANON84994 | JohnDoe_ANON99601 | JohnDoe_ANON27183 | 
+| JohnDoe_ANON62642 | JohnDoe_ANON11762 | JohnDoe_ANON24065 | JohnDoe_ANON28177 | JohnDoe_ANON39011 |
+| JohnDoe_ANON29513 | JohnDoe_ANON45396 | JaneDoe_ANON82950 | JohnDoe_ANON86311 | JohnDoe_ANON96978 |
+| JohnDoe_ANON87212 | JohnDoe_ANON53833 | JohnDoe_ANON36736 | JohnDoe_ANON92634 | JohnDoe_ANON44625 |
+| JohnDoe_ANON32161 | JohnDoe_ANON87639 | JohnDoe_ANON92476 | JaneDoe_ANON56370 | JaneDoe_ANON12304 |
+| JohnDoe_ANON15323 | JohnDoe_ANON91519 | JohnDoe_ANON42529 | JaneDoe_ANON25911 | JohnDoe_ANON27373 |
+| JaneDoe_ANON83544 | JohnDoe_ANON55240 | JohnDoe_ANON78721 | JohnDoe_ANON23001 | JohnDoe_ANON55831 |
+| JohnDoe_ANON87883 | JohnDoe_ANON13231 | JohnDoe_ANON77296 | JohnDoe_ANON39080 | JohnDoe_ANON81710 |
+| JohnDoe_ANON87928 | JohnDoe_ANON27417 | JohnDoe_ANON74328 | JohnDoe_ANON61677 | JohnDoe_ANON64482 |
+| JaneDoe_ANON69091 | JohnDoe_ANON21673 | JohnDoe_ANON15860 | JohnDoe_ANON51834 | JohnDoe_ANON45696 |
+| JohnDoe_ANON46160 | JohnDoe_ANON98767 | JohnDoe_ANON72295 | JohnDoe_ANON57371 | JohnDoe_ANON22228 |
+| JohnDoe_ANON23808 | JaneDoe_ANON34438 | JaneDoe_ANON56995 |         -         |         -         |
 
 ## Conventional Registration Pipelines & Experiments.
 |         Pipeline File          |                  Global                  | Global <br> Masks | Mean Liver <br> Dice |             Local             |                     Local <br> Masks                     | Mean Liver <br> Dice |               Comments                |

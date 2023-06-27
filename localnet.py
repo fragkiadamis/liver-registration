@@ -1,6 +1,6 @@
+import json
 import os
 import random
-from datetime import datetime
 from time import time
 
 import torch
@@ -10,7 +10,7 @@ from sklearn.model_selection import KFold
 import wandb
 from tqdm import tqdm
 import numpy as np
-import nibabel as nib
+import SimpleITK as sitk
 
 from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
@@ -20,10 +20,17 @@ from monai.transforms import Compose, LoadImaged
 from monai.losses import DiceLoss, MultiScaleLoss, BendingEnergyLoss
 from monai.metrics import DiceMetric
 
+from registration import calculate_metrics
 from utils import setup_parser, create_dir, validate_paths
 from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, DEVICE, PIN_MEMORY
 
 print_config()
+
+seed = 42
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
 
 
 # Initialize wandb.
@@ -41,13 +48,6 @@ def init_wandb(fold):
     )
 
 
-seed = 42
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-np.random.seed(seed)
-random.seed(seed)
-
-
 # Print the time logs.
 def print_time_logs(timer):
     for key, value in timer.items():
@@ -55,34 +55,29 @@ def print_time_logs(timer):
 
 
 # Extract the images from the torches and save them.
-def save_predictions(predictions, output):
-    for prediction in predictions:
-        patient = list(prediction.keys())[0]
-        image = prediction[patient]["image_tensor"].cpu().numpy()[0, 0]
-        image = np.flip(image, axis=(0, 1))
-        image = nib.Nifti1Image(image, affine=np.eye(4))
+def save_prediction(prediction, input_dir):
+    patient = list(prediction.keys())[0]
+    print(f"Saving predictions: {patient}")
 
-        label = prediction[patient]["label_tensor"].cpu().numpy()[0, 0]
-        label = np.flip(label, axis=(0, 1))
-        label = nib.Nifti1Image(label, affine=np.eye(4))
+    patient_dir = os.path.join(input_dir, patient)
+    img_ref = sitk.ReadImage(f"./data/localnet/{patient}/ct_volume.nii.gz")
 
-        nib.save(image, f"{output}/{patient}_volume_pred.nii.gz")
-        nib.save(label, f"{output}/{patient}_liver_pred.nii.gz")
+    image = prediction[patient]["image_tensor"].cpu().numpy()[0, 0]
+    image = np.swapaxes(image, 0, 2)
+    image = sitk.GetImageFromArray(image)
+    image.SetSpacing(img_ref.GetSpacing())
+    image.SetOrigin(img_ref.GetOrigin())
+    image.SetDirection(img_ref.GetDirection())
 
+    label = prediction[patient]["label_tensor"].cpu().numpy()[0, 0]
+    label = np.swapaxes(label, 0, 2)
+    label = sitk.GetImageFromArray(label)
+    label.SetSpacing(img_ref.GetSpacing())
+    label.SetOrigin(img_ref.GetOrigin())
+    label.SetDirection(img_ref.GetDirection())
 
-# Calculate the initial dice average on the data.
-def initial_dice(test_loader, dice_metric):
-    for test_data in test_loader:
-        fixed_label = test_data["fixed_gt_label"].to(DEVICE)
-        moving_label = test_data["moving_label"].to(DEVICE)
-
-        dice = dice_metric(y_pred=moving_label, y=fixed_label)
-        print(dice[0][0])
-
-    dice_avg = dice_metric.aggregate().item()
-    dice_metric.reset()
-
-    return dice_avg
+    sitk.WriteImage(image, f"{patient_dir}/mri_volume_pred.nii.gz")
+    sitk.WriteImage(label, f"{patient_dir}/mri_liver_pred.nii.gz")
 
 
 # Preprocessing and data augmentation.
@@ -221,34 +216,22 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
 
 
 # Inference the model.
-def inference_model(model, test_loader, warp_layer, dice_metric):
+def inference_model(model, test_loader, warp_layer, output_dir):
     model.eval()
 
+    print("Inferencing data...")
     # Loop over the validation set.
     with torch.no_grad():
-        predictions = []
         for test_data in test_loader:
             # Predict moving image and moving label.
             ddf, x_pred, y_pred = forward(test_data, model, warp_layer, inference=True)
-            fixed_gt_label = test_data["fixed_gt_label"].to(DEVICE)
 
-            # Calculate dice on the predicted label.
-            dice = dice_metric(y_pred=y_pred, y=fixed_gt_label)
-            print(f"{test_data['patient']}: {dice[0][0]}")
-
-            # Append the predictions for the respective patient.
-            predictions.append({
+            save_prediction({
                 test_data["patient"][0]: {
                     "image_tensor": x_pred,
                     "label_tensor": y_pred
                 }
-            })
-
-        # Aggregate dice results.
-        dice_avg = dice_metric.aggregate().item()
-        dice_metric.reset()
-
-    return dice_avg, predictions
+            }, output_dir)
 
 
 def main():
@@ -264,9 +247,7 @@ def main():
     create_dir(dir_name, output_dir)
 
     # Initialize the model.
-    models_dir = create_dir(output_dir, model_name)
-    timestamp_dir = create_dir(models_dir, str(datetime.now().strftime("%d-%m-%Y_%H:%M:%S")))
-    fold_dir = create_dir(timestamp_dir, f"fold_{fold}")
+    model_dir = create_dir(output_dir, model_name)
 
     # Initialize wandb.
     init_wandb(fold)
@@ -362,7 +343,7 @@ def main():
         dice_values.append(val_dice_avg)
         if val_dice_avg > best_dice:
             best_dice = val_dice_avg
-            torch.save(model.state_dict(), f"{fold_dir}/best_model.pth")
+            torch.save(model.state_dict(), f"{model_dir}/fold_{fold}_best_model.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
         wandb.log({"best_dice": best_dice}, step=e + 1)
@@ -372,19 +353,30 @@ def main():
     wandb.finish()
 
     # Load saved model.
-    model.load_state_dict(torch.load(f"{fold_dir}/best_model.pth"))
+    model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
 
-    # Calculate initial dice average.
-    init_dice_avg = initial_dice(val_loader, dice_metric)
-    print(f"[INFO] Average Initial Dice: {init_dice_avg}")
+    # Inference the testing data and save the predictions.
+    inference_model(model, val_loader, warp_layer, input_dir)
 
-    # Inference the testing data.
-    avg_dice, predictions = inference_model(model, val_loader, warp_layer, dice_metric)
-    print(f"[INFO] Average Final Dice: {avg_dice}")
+    # Calculate metrics.
+    patient_list = [item["patient"] for item in val_files]
+    for patient in patient_list:
+        patient_dir = os.path.join(input_dir, patient)
+        ct_gt_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
+        mri_liver = os.path.join(patient_dir, "mri_liver.nii.gz")
+        mri_liver_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
 
-    # Save the predictions.
-    raw_dir = create_dir(fold_dir, "validation_raw")
-    save_predictions(predictions, raw_dir)
+        results = {
+            "liver": {
+                "Initial": calculate_metrics(ct_gt_liver, mri_liver),
+                "LocalNet": calculate_metrics(ct_gt_liver, mri_liver_pred)
+            }
+        }
+
+        with open(f"{patient_dir}/evaluation.json", "w") as fp:
+            json.dump(results, fp)
+
+        print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['Initial']}")
 
 
 # Use this file as a script and run it.
