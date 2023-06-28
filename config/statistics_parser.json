@@ -1,0 +1,11 @@
+{
+  "description": "Create the image databases from the raw database.",
+  "arguments": {
+    "required": {
+      "-i": "Path to the excel file with the statistics.",
+      "-o": "Path where the plots are going to be exported."
+    },
+    "optional": {
+    }
+  }
+}

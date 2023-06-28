@@ -1,6 +1,6 @@
 import torch
 
-ARCHITECTURE = "localnet"
+ARCHITECTURE = "GlobalNet"
 
 TRAIN_SPLIT = 0.80
 VAL_SPLIT = 0.20

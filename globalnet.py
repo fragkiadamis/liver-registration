@@ -15,7 +15,7 @@ import SimpleITK as sitk
 from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
 from monai.networks.blocks import Warp
-from monai.networks.nets import LocalNet
+from monai.networks.nets import GlobalNet
 from monai.transforms import Compose, LoadImaged
 from monai.losses import DiceLoss, MultiScaleLoss, BendingEnergyLoss
 from monai.metrics import DiceMetric
@@ -38,7 +38,7 @@ def init_wandb(fold):
     wandb.init(
         project="liver-registration",
         name=f"fold_{fold}",
-        tags=["localnet", "registration"],
+        tags=["globalnet", "registration"],
         config={
             "architecture": ARCHITECTURE,
             "epochs": NUM_EPOCHS,
@@ -60,7 +60,7 @@ def save_prediction(prediction, input_dir):
     print(f"Saving predictions: {patient}")
 
     patient_dir = os.path.join(input_dir, patient)
-    img_ref = sitk.ReadImage(f"./data/localnet/{patient}/ct_volume.nii.gz")
+    img_ref = sitk.ReadImage(f"./data/globalnet/{patient}/ct_volume.nii.gz")
 
     image = prediction[patient]["image_tensor"].cpu().numpy()[0, 0]
     image = np.swapaxes(image, 0, 2)
@@ -118,7 +118,7 @@ def forward(sample, model, warp_layer, inference=False):
 
 
 # Train the model.
-def train(model, train_loader, criterion, regularization, optimizer, warp_layer, dice_metric):
+def train(model, train_loader, criterion, optimizer, warp_layer, dice_metric):
     start_time = time()
 
     model.train()
@@ -139,7 +139,7 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer,
         optimizer.zero_grad()
 
         # Calculate loss and backpropagation.
-        train_loss = criterion(y_pred_ln, fixed_unet3d_label) + (0.5 * regularization(ddf))
+        train_loss = criterion(y_pred_ln, fixed_unet3d_label)
         loss_calc = time()
         train_loss.backward()
         optimizer.step()
@@ -170,7 +170,7 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer,
 
 
 # Validate the model.
-def validate(model, val_loader, criterion, regularization, warp_layer, dice_metric):
+def validate(model, val_loader, criterion, warp_layer, dice_metric):
     start_time = time()
 
     model.eval()
@@ -190,7 +190,7 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
             fwd_calc = time()
 
             # Calculate loss.
-            val_loss = criterion(y_pred_ln, fixed_unet3d_label) + (0.5 * regularization(ddf))
+            val_loss = criterion(y_pred_ln, fixed_unet3d_label)
             total_val_loss += val_loss.item()
             loss_calc = time()
 
@@ -286,15 +286,13 @@ def main():
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
 
-    # Create LocalNet, losses and optimizer.
-    model = LocalNet(
+    # Create GlobalNet, losses and optimizer.
+    model = GlobalNet(
+        image_size=[256, 256, 224],
         spatial_dims=3,
         in_channels=2,
-        out_channels=3,
         num_channel_initial=16,
-        extract_levels=(2,),
-        out_activation=None,
-        out_kernel_initializer="zeros",
+        depth=3  # moving and fixed
     ).to(DEVICE)
 
     train_steps = len(train_ds) // BATCH_SIZE
@@ -305,7 +303,6 @@ def main():
         "binary": Warp(mode="nearest", padding_mode="border").to(DEVICE)
     }
     criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
-    regularization = BendingEnergyLoss()
     optimizer = Adam(model.parameters(), lr=INIT_LR)
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
@@ -318,13 +315,12 @@ def main():
 
         # Train and validate the model.
         print("\n***TRAINING***")
-        train_loss, train_dice_avg = train(model, train_loader, criterion,
-                                           regularization, optimizer, warp_layer, dice_metric)
+        train_loss, train_dice_avg = train(model, train_loader, criterion, optimizer, warp_layer, dice_metric)
         print(f"[INFO] Training time: {round((time() - epoch_start_time) / 60, 2)} minutes")
 
         print("***VALIDATION***")
         val_start_time = time()
-        val_loss, val_dice_avg = validate(model, val_loader, criterion, regularization, warp_layer, dice_metric)
+        val_loss, val_dice_avg = validate(model, val_loader, criterion, warp_layer, dice_metric)
         print(f"[INFO] Validation time: {round((time() - val_start_time) / 60, 2)} minutes")
 
         avg_train_loss = train_loss / train_steps
@@ -369,14 +365,14 @@ def main():
         results = {
             "liver": {
                 "Initial": calculate_metrics(ct_gt_liver, mri_liver),
-                "LocalNet": calculate_metrics(ct_gt_liver, mri_liver_pred)
+                "GlobalNet": calculate_metrics(ct_gt_liver, mri_liver_pred)
             }
         }
 
         with open(f"{patient_dir}/evaluation.json", "w") as fp:
             json.dump(results, fp)
 
-        print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['LocalNet']}")
+        print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['GlobalNet']}")
 
 
 # Use this file as a script and run it.
