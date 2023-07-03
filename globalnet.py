@@ -4,7 +4,9 @@ import random
 from time import time
 
 import torch
-from torch.optim import Adam
+import torch.nn.init as init
+from torch import nn
+from torch.optim import Adam, lr_scheduler
 from sklearn.model_selection import KFold
 
 import wandb
@@ -16,13 +18,13 @@ from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
 from monai.networks.blocks import Warp
 from monai.networks.nets import GlobalNet
-from monai.transforms import Compose, LoadImaged
-from monai.losses import DiceLoss, MultiScaleLoss, BendingEnergyLoss
+from monai.transforms import Compose, LoadImaged, Resized, ScaleIntensityRanged
+from monai.losses import DiceLoss, MultiScaleLoss
 from monai.metrics import DiceMetric
 
 from registration import calculate_metrics
 from utils import setup_parser, create_dir, validate_paths
-from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, DEVICE, PIN_MEMORY
+from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, DEVICE, PIN_MEMORY, TR_BATCH_SIZE, VAL_BATCH_SIZE
 
 print_config()
 
@@ -43,7 +45,7 @@ def init_wandb(fold):
             "architecture": ARCHITECTURE,
             "epochs": NUM_EPOCHS,
             "learning_rate": INIT_LR,
-            "batch_size": BATCH_SIZE
+            "batch_size": TR_BATCH_SIZE
         }
     )
 
@@ -283,20 +285,22 @@ def main():
     val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
 
     # Load the datasets.
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=TR_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_ds, batch_size=VAL_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
 
     # Create GlobalNet, losses and optimizer.
     model = GlobalNet(
         image_size=[256, 256, 224],
         spatial_dims=3,
         in_channels=2,
-        num_channel_initial=16,
-        depth=3  # moving and fixed
+        num_channel_initial=8,
+        depth=5,
+        out_activation=None,
+        out_kernel_initializer="zeros",
     ).to(DEVICE)
 
-    train_steps = len(train_ds) // BATCH_SIZE
-    val_steps = len(val_ds) // BATCH_SIZE
+    train_steps = len(train_ds) // TR_BATCH_SIZE
+    val_steps = len(val_ds) // VAL_BATCH_SIZE
 
     warp_layer = {
         "linear": Warp(mode="bilinear", padding_mode="border").to(DEVICE),
@@ -339,7 +343,7 @@ def main():
         dice_values.append(val_dice_avg)
         if val_dice_avg > best_dice:
             best_dice = val_dice_avg
-            torch.save(model.state_dict(), f"{model_dir}/fold_{fold}_best_model.pth")
+            torch.save(model.state_dict(), f"{model_dir}/fold_{fold}_best_model_128.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
         wandb.log({"best_dice": best_dice}, step=e + 1)
@@ -349,30 +353,30 @@ def main():
     wandb.finish()
 
     # Load saved model.
-    model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
-
-    # Inference the testing data and save the predictions.
-    inference_model(model, val_loader, warp_layer, input_dir)
-
-    # Calculate metrics.
-    patient_list = [item["patient"] for item in val_files]
-    for patient in patient_list:
-        patient_dir = os.path.join(input_dir, patient)
-        ct_gt_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
-        mri_liver = os.path.join(patient_dir, "mri_liver.nii.gz")
-        mri_liver_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
-
-        results = {
-            "liver": {
-                "Initial": calculate_metrics(ct_gt_liver, mri_liver),
-                "GlobalNet": calculate_metrics(ct_gt_liver, mri_liver_pred)
-            }
-        }
-
-        with open(f"{patient_dir}/evaluation.json", "w") as fp:
-            json.dump(results, fp)
-
-        print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['GlobalNet']}")
+    # model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
+    #
+    # # Inference the testing data and save the predictions.
+    # inference_model(model, val_loader, warp_layer, input_dir)
+    #
+    # # Calculate metrics.
+    # patient_list = [item["patient"] for item in val_files]
+    # for patient in patient_list:
+    #     patient_dir = os.path.join(input_dir, patient)
+    #     ct_gt_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
+    #     mri_liver = os.path.join(patient_dir, "mri_liver.nii.gz")
+    #     mri_liver_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
+    #
+    #     results = {
+    #         "liver": {
+    #             "Initial": calculate_metrics(ct_gt_liver, mri_liver),
+    #             "GlobalNet": calculate_metrics(ct_gt_liver, mri_liver_pred)
+    #         }
+    #     }
+    #
+    #     with open(f"{patient_dir}/evaluation.json", "w") as fp:
+    #         json.dump(results, fp)
+    #
+    #     print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['GlobalNet']}")
 
 
 # Use this file as a script and run it.

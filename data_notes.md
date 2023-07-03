@@ -37,7 +37,25 @@
 14. JaneDoe_ANON11762
 15. JohnDoe_ANON65060
 
-## Validation Folds.
+## GlobalNet Validation Folds.
+|      Fold 0       | Fold 1 | Fold 2 | Fold 3 | Fold 4 | 
+|:-----------------:|:------:|:------:|:------:|:------:|
+| JohnDoe_ANON98854 |        |        |        |        |
+| JohnDoe_ANON80520 |        |        |        |        | 
+| JohnDoe_ANON65060 |        |        |        |        | 
+| JohnDoe_ANON62642 |        |        |        |        |
+| JohnDoe_ANON29513 |        |        |        |        |
+| JohnDoe_ANON87212 |        |        |        |        |
+| JohnDoe_ANON32161 |        |        |        |        |
+| JohnDoe_ANON15323 |        |        |        |        |
+| JaneDoe_ANON83544 |        |        |        |        |
+| JohnDoe_ANON87883 |        |        |        |        |
+| JohnDoe_ANON87928 |        |        |        |        |
+| JaneDoe_ANON69091 |        |        |        |        |
+| JohnDoe_ANON46160 |        |        |        |        |
+| JohnDoe_ANON23808 |        |        |        |        |
+
+## LocalNet Validation Folds.
 |      Fold 0       |      Fold 1       |      Fold 2       |      Fold 3       |      Fold 4       | 
 |:-----------------:|:-----------------:|:-----------------:|:-----------------:|:-----------------:|
 | JohnDoe_ANON98854 | JohnDoe_ANON55215 | JohnDoe_ANON70417 | JohnDoe_ANON50337 | JohnDoe_ANON83160 |
