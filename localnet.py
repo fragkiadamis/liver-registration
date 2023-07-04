@@ -22,7 +22,7 @@ from monai.metrics import DiceMetric
 
 from registration import calculate_metrics
 from utils import setup_parser, create_dir, validate_paths
-from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, BATCH_SIZE, DEVICE, PIN_MEMORY
+from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, TR_BATCH_SIZE, VAL_BATCH_SIZE, DEVICE, PIN_MEMORY
 
 print_config()
 
@@ -43,7 +43,7 @@ def init_wandb(fold):
             "architecture": ARCHITECTURE,
             "epochs": NUM_EPOCHS,
             "learning_rate": INIT_LR,
-            "batch_size": BATCH_SIZE
+            "batch_size": TR_BATCH_SIZE
         }
     )
 
@@ -76,8 +76,16 @@ def save_prediction(prediction, input_dir):
     label.SetOrigin(img_ref.GetOrigin())
     label.SetDirection(img_ref.GetDirection())
 
+    ddf = prediction[patient]["ddf"].cpu().numpy()[0, 0]
+    ddf = np.swapaxes(ddf, 0, 2)
+    ddf = sitk.GetImageFromArray(ddf)
+    ddf.SetSpacing(img_ref.GetSpacing())
+    ddf.SetOrigin(img_ref.GetOrigin())
+    ddf.SetDirection(img_ref.GetDirection())
+
     sitk.WriteImage(image, f"{patient_dir}/mri_volume_pred.nii.gz")
     sitk.WriteImage(label, f"{patient_dir}/mri_liver_pred.nii.gz")
+    sitk.WriteImage(label, f"{patient_dir}/ddf_pred.nii.gz")
 
 
 # Preprocessing and data augmentation.
@@ -222,16 +230,27 @@ def inference_model(model, test_loader, warp_layer, output_dir):
     print("Inferencing data...")
     # Loop over the validation set.
     with torch.no_grad():
+        total_inference_time = 0
         for test_data in test_loader:
+            start_time = time()
+
             # Predict moving image and moving label.
             ddf, x_pred, y_pred = forward(test_data, model, warp_layer, inference=True)
+
+            inference_time = time() - start_time
+            total_inference_time += inference_time
+            print(f"{test_data['patient'][0]} inference time: {round(inference_time, 2)} sec.")
 
             save_prediction({
                 test_data["patient"][0]: {
                     "image_tensor": x_pred,
-                    "label_tensor": y_pred
+                    "label_tensor": y_pred,
+                    "ddf": ddf
                 }
             }, output_dir)
+
+        avg_inference_time = total_inference_time / len(test_loader)
+        print(f"Average inference time: {round(avg_inference_time, 2)} sec.")
 
 
 def main():
@@ -283,8 +302,8 @@ def main():
     val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
 
     # Load the datasets.
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=TR_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_ds, batch_size=VAL_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
 
     # Create LocalNet, losses and optimizer.
     model = LocalNet(
@@ -297,8 +316,8 @@ def main():
         out_kernel_initializer="zeros",
     ).to(DEVICE)
 
-    train_steps = len(train_ds) // BATCH_SIZE
-    val_steps = len(val_ds) // BATCH_SIZE
+    train_steps = len(train_ds) // TR_BATCH_SIZE
+    val_steps = len(val_ds) // VAL_BATCH_SIZE
 
     warp_layer = {
         "linear": Warp(mode="bilinear", padding_mode="border").to(DEVICE),
