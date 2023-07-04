@@ -1,5 +1,5 @@
 {
-  "name": "baseline_unet3d_ct_seg",
+  "name": "baseline_unet3d_masks",
   "studies": {"fixed": "ct", "moving": "mri"},
   "registration_steps": [
     {

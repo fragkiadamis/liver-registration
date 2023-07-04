@@ -18,7 +18,7 @@ from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
 from monai.networks.blocks import Warp
 from monai.networks.nets import GlobalNet
-from monai.transforms import Compose, LoadImaged, Resized, ScaleIntensityRanged
+from monai.transforms import Compose, LoadImaged
 from monai.losses import DiceLoss, MultiScaleLoss
 from monai.metrics import DiceMetric
 
@@ -293,7 +293,7 @@ def main():
         image_size=[256, 256, 224],
         spatial_dims=3,
         in_channels=2,
-        num_channel_initial=8,
+        num_channel_initial=4,
         depth=5,
         out_activation=None,
         out_kernel_initializer="zeros",

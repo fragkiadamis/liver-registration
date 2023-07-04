@@ -1,5 +1,5 @@
 {
-  "name": "baseline_ground_truth_ct_seg",
+  "name": "baseline_gt_masks",
   "studies": {"fixed": "ct", "moving": "mri"},
   "registration_steps": [
     {
