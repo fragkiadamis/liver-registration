@@ -4,9 +4,7 @@ import random
 from time import time
 
 import torch
-import torch.nn.init as init
-from torch import nn
-from torch.optim import Adam, lr_scheduler
+from torch.optim import Adam
 from sklearn.model_selection import KFold
 
 import wandb
@@ -78,8 +76,16 @@ def save_prediction(prediction, input_dir):
     label.SetOrigin(img_ref.GetOrigin())
     label.SetDirection(img_ref.GetDirection())
 
+    ddf = prediction[patient]["ddf"].cpu().numpy()[0, 0]
+    ddf = np.swapaxes(ddf, 0, 2)
+    ddf = sitk.GetImageFromArray(ddf)
+    ddf.SetSpacing(img_ref.GetSpacing())
+    ddf.SetOrigin(img_ref.GetOrigin())
+    ddf.SetDirection(img_ref.GetDirection())
+
     sitk.WriteImage(image, f"{patient_dir}/mri_volume_pred.nii.gz")
     sitk.WriteImage(label, f"{patient_dir}/mri_liver_pred.nii.gz")
+    sitk.WriteImage(label, f"{patient_dir}/ddf_pred.nii.gz")
 
 
 # Preprocessing and data augmentation.
@@ -294,7 +300,7 @@ def main():
         spatial_dims=3,
         in_channels=2,
         num_channel_initial=4,
-        depth=5,
+        depth=3,
         out_activation=None,
         out_kernel_initializer="zeros",
     ).to(DEVICE)
@@ -353,30 +359,30 @@ def main():
     wandb.finish()
 
     # Load saved model.
-    # model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
-    #
-    # # Inference the testing data and save the predictions.
-    # inference_model(model, val_loader, warp_layer, input_dir)
-    #
-    # # Calculate metrics.
-    # patient_list = [item["patient"] for item in val_files]
-    # for patient in patient_list:
-    #     patient_dir = os.path.join(input_dir, patient)
-    #     ct_gt_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
-    #     mri_liver = os.path.join(patient_dir, "mri_liver.nii.gz")
-    #     mri_liver_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
-    #
-    #     results = {
-    #         "liver": {
-    #             "Initial": calculate_metrics(ct_gt_liver, mri_liver),
-    #             "GlobalNet": calculate_metrics(ct_gt_liver, mri_liver_pred)
-    #         }
-    #     }
-    #
-    #     with open(f"{patient_dir}/evaluation.json", "w") as fp:
-    #         json.dump(results, fp)
-    #
-    #     print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['GlobalNet']}")
+    model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
+
+    # Inference the testing data and save the predictions.
+    inference_model(model, val_loader, warp_layer, input_dir)
+
+    # Calculate metrics.
+    patient_list = [item["patient"] for item in val_files]
+    for patient in patient_list:
+        patient_dir = os.path.join(input_dir, patient)
+        ct_gt_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
+        mri_liver = os.path.join(patient_dir, "mri_liver.nii.gz")
+        mri_liver_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
+
+        results = {
+            "liver": {
+                "Initial": calculate_metrics(ct_gt_liver, mri_liver),
+                "GlobalNet": calculate_metrics(ct_gt_liver, mri_liver_pred)
+            }
+        }
+
+        with open(f"{patient_dir}/evaluation.json", "w") as fp:
+            json.dump(results, fp)
+
+        print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['GlobalNet']}")
 
 
 # Use this file as a script and run it.

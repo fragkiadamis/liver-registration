@@ -5,8 +5,10 @@ from shutil import copytree, copy
 from subprocess import run, check_output
 
 import nibabel as nib
+import SimpleITK as sitk
 import numpy as np
 
+from registration import calculate_metrics
 from utils import setup_parser, validate_paths, delete_dir, create_dir, ImageProperty
 
 
@@ -67,11 +69,6 @@ def get_statistics(img_path):
     std = 1 / float(output_split[10][3:])
 
     return -mean, std
-
-
-# Perform a bias field correction for the MRIs.
-def bias_field_correction(mri):
-    run(["clitkN4BiasFieldCorrection", "-i", mri, "-o", mri])
 
 
 # Change the spacing and the size of the images in the pair.
@@ -143,6 +140,36 @@ def create_bounding_boxes(pair):
         nib.save(bounding_box_nii, f"{split_path[0]}_bb.{split_path[1]}.gz")
 
 
+# Align MRI images to the center of gravity of CT.
+def align_to_cog(pair):
+    print(calculate_metrics(pair["CT"]["unet3d_liver"], pair["MRI"]["liver"]))
+
+    ct_label_nii = sitk.ReadImage(pair["CT"]["unet3d_liver"])
+    mri_image_nii = sitk.ReadImage(pair["MRI"]["volume"])
+    mri_label_nii = sitk.ReadImage(pair["MRI"]["liver"])
+
+    ct_label_data = sitk.GetArrayFromImage(ct_label_nii)
+    mri_label_data = sitk.GetArrayFromImage(mri_label_nii)
+    mri_image_data = sitk.GetArrayFromImage(mri_image_nii)
+
+    # Calculate the center of gravity for CT image and MRI image and calculate the displacement vector.
+    ct_center = np.array([np.average(indices) for indices in np.where(ct_label_data == 1)])
+    mri_center = np.array([np.average(indices) for indices in np.where(mri_label_data == 1)])
+    displacement = ct_center - mri_center
+
+    for item in pair["MRI"]:
+        shifter_mri = mri_label_data if item == "liver" else mri_image_data
+        shifter_mri = np.roll(shifter_mri, displacement.astype(int), axis=(0, 1, 2))
+        shifter_mri = shifter_mri.astype(np.uint8)
+        shifter_mri = sitk.GetImageFromArray(shifter_mri)
+        shifter_mri.SetSpacing(ct_label_nii.GetSpacing())
+        shifter_mri.SetOrigin(ct_label_nii.GetOrigin())
+        shifter_mri.SetDirection(ct_label_nii.GetDirection())
+        sitk.WriteImage(shifter_mri, pair["MRI"][item])
+
+    print(calculate_metrics(pair["CT"]["unet3d_liver"], pair["MRI"]["liver"]))
+
+
 # Perform a gaussian normalization to the images.
 def gaussian_normalize(image_paths):
     for img_path in image_paths:
@@ -191,8 +218,6 @@ def elastix_preprocessing(input_dir, output_dir):
             })
 
         # Preprocessing for conventional registration usage.
-        # print(f"-Bias field correction for patient: {patient}")
-        # bias_field_correction(pair["MRI"]["volume"])
         print(f"-Resampling for patient: {patient}")
         resample(pair, spacing=(1, 1, 1), size=(512, 512, 448))
         print(f"-Create boundary boxes for patient: {patient}")
@@ -273,6 +298,8 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         # Process the images.
         print("\t-Resample images and labels...")
         resample(pair, spacing=(2, 2, 2), size=(256, 256, 224))
+        print("Align MRI to Center of Gravity")
+        align_to_cog(pair)
         print("\t-Cast images to float...")
         cast_to_type([pair["CT"]["volume"], pair["MRI"]["volume"]], "float")
         print("\t-Image normalization...")
