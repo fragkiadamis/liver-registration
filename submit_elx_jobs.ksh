@@ -9,7 +9,7 @@ PROJECT_DIR="${WORKDIR}/liver-baseline-registration"
 VENV="${PROJECT_DIR}/venv/bin/activate"
 INPUT_DIR="${PROJECT_DIR}/data/nii_iso"
 OUTPUT_DIR="${PROJECT_DIR}/data/elastix"
-PIPELINE="${PROJECT_DIR}/pipelines/baseline_ground_truth_ct_seg.json"
+PIPELINE="${PROJECT_DIR}/pipelines/baseline_unet3d_masks.json"
 
 # For each patient submit a registration job.
 for PATIENT_DIR in $INPUT_DIR/*

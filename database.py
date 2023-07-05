@@ -247,8 +247,11 @@ def main():
         patient_input = os.path.join(input_dir, patient)
         patient_output = create_dir(output_dir, patient)
 
-        # For each study of the patient (ceMRI, SPECT-CT, PET-CT).
+        # For each study of the patient (ceMRI, SPECT-CT).
         for study in os.listdir(patient_input):
+            if study == "PET-CT":
+                continue
+
             print(f"\t-Study: {study}")
             study_input = os.path.join(patient_input, study)
             extract_from_dicom(study_input, patient_output)
