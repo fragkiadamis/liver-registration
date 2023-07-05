@@ -72,13 +72,3 @@
 | JaneDoe_ANON69091 | JohnDoe_ANON21673 | JohnDoe_ANON15860 | JohnDoe_ANON51834 | JohnDoe_ANON45696 |
 | JohnDoe_ANON46160 | JohnDoe_ANON98767 | JohnDoe_ANON72295 | JohnDoe_ANON57371 | JohnDoe_ANON22228 |
 | JohnDoe_ANON23808 | JaneDoe_ANON34438 | JaneDoe_ANON56995 |         -         |         -         |
-
-## Conventional Registration Pipelines & Experiments.
-|           Pipeline File           |                      Global                       | Global <br> Masks | Mean Liver <br> Dice |             Local             |                     Local <br> Masks                     | Mean Liver <br> Dice |               Comments                |
-|:---------------------------------:|:-------------------------------------------------:|:-----------------:|:--------------------:|:-----------------------------:|:--------------------------------------------------------:|:--------------------:|:-------------------------------------:|
-|  baseline_unet3d_masks_bbox.json  |     Affine KS <br> (on liver bounding boxes)      |      &cross;      |        80.40%        | B-spline MI <br> (on volumes) | <ul><li>Fixed liver_bb</li><li>Moving liver_bb</li></ul> |        88.32%        |    Affine on liver bounding boxes.    |
-|    baseline_unet3d_masks.json     |          Affine KS <br> (on liver masks)          |      &cross;      |        89.57%        | B-spline MI <br> (on volumes) | <ul><li>Fixed liver_bb</li><li>Moving liver_bb</li></ul> |        91.13%        | Affine on auto generated liver masks. |
-|      baseline_gt_masks.json       |          Affine KS <br> (on liver masks)          |      &cross;      |        89.54%        | B-spline MI <br> (on volumes) | <ul><li>Fixed liver_bb</li><li>Moving liver_bb</li></ul> |        91.25%        |  Affine on ground truth liver masks.  |
-|       baseline_images.json        |            Affine MI <br> (on images)             |      &cross;      |                      |                               |                                                          |                      |                                       |
-|    baseline_images_masks.json     |            Affine MI <br> (on images)             |      &check;      |                      |                               |                                                          |                      |                                       |
-| baseline_images_masks_no_cog.json | Affine MI (no center of gravity) <br> (on images) |      &check;      |                      |                               |                                                          |                      |                                       |

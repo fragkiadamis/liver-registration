@@ -142,8 +142,6 @@ def create_bounding_boxes(pair):
 
 # Align MRI images to the center of gravity of CT.
 def align_to_cog(pair):
-    print(calculate_metrics(pair["CT"]["unet3d_liver"], pair["MRI"]["liver"]))
-
     ct_label_nii = sitk.ReadImage(pair["CT"]["unet3d_liver"])
     mri_image_nii = sitk.ReadImage(pair["MRI"]["volume"])
     mri_label_nii = sitk.ReadImage(pair["MRI"]["liver"])
@@ -158,16 +156,13 @@ def align_to_cog(pair):
     displacement = ct_center - mri_center
 
     for item in pair["MRI"]:
-        shifter_mri = mri_label_data if item == "liver" else mri_image_data
-        shifter_mri = np.roll(shifter_mri, displacement.astype(int), axis=(0, 1, 2))
-        shifter_mri = shifter_mri.astype(np.uint8)
-        shifter_mri = sitk.GetImageFromArray(shifter_mri)
-        shifter_mri.SetSpacing(ct_label_nii.GetSpacing())
-        shifter_mri.SetOrigin(ct_label_nii.GetOrigin())
-        shifter_mri.SetDirection(ct_label_nii.GetDirection())
-        sitk.WriteImage(shifter_mri, pair["MRI"][item])
-
-    print(calculate_metrics(pair["CT"]["unet3d_liver"], pair["MRI"]["liver"]))
+        shifted_mri = mri_label_data if item == "liver" else mri_image_data
+        shifted_mri = np.roll(shifted_mri, displacement.astype(int), axis=(0, 1, 2))
+        shifted_mri = sitk.GetImageFromArray(shifted_mri)
+        shifted_mri.SetSpacing(ct_label_nii.GetSpacing())
+        shifted_mri.SetOrigin(ct_label_nii.GetOrigin())
+        shifted_mri.SetDirection(ct_label_nii.GetDirection())
+        sitk.WriteImage(shifted_mri, pair["MRI"][item])
 
 
 # Perform a gaussian normalization to the images.
@@ -298,7 +293,7 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         # Process the images.
         print("\t-Resample images and labels...")
         resample(pair, spacing=(2, 2, 2), size=(256, 256, 224))
-        print("Align MRI to Center of Gravity")
+        print("\t-Align MRI to Center of Gravity")
         align_to_cog(pair)
         print("\t-Cast images to float...")
         cast_to_type([pair["CT"]["volume"], pair["MRI"]["volume"]], "float")
