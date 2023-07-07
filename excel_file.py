@@ -76,11 +76,10 @@ def main():
     df = None
     results_path = f"results/{pipeline}.xlsx"
 
-    exp_path = os.path.join(input_dir, pipeline)
-    patients = os.listdir(exp_path)
+    patients = os.listdir(input_dir)
     for patient in patients:
-        patient_dir = os.path.join(exp_path, patient)
-        evaluation_path = os.path.join(patient_dir, "evaluation.json")
+        patient_dir = os.path.join(input_dir, patient)
+        evaluation_path = os.path.join(patient_dir, "results", pipeline, "evaluation.json")
 
         if os.path.exists(evaluation_path):
             pf = open(evaluation_path)

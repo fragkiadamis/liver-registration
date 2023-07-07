@@ -8,7 +8,6 @@ echo "Starting registration job submission."
 PROJECT_DIR="${WORKDIR}/liver-baseline-registration"
 VENV="${PROJECT_DIR}/venv/bin/activate"
 INPUT_DIR="${PROJECT_DIR}/data/nii_iso"
-OUTPUT_DIR="${PROJECT_DIR}/data/elastix"
 PIPELINE="${PROJECT_DIR}/pipelines/baseline_unet3d_masks.json"
 
 # For each patient submit a registration job.
@@ -25,7 +24,7 @@ do
         echo "#$ -o ${PROJECT_DIR}/logs/elx_registration.out"
         echo "#$ -N p$PATIENT_ID"
         echo "source ${VENV}"
-        echo "python ${PROJECT_DIR}/registration.py -i ${INPUT_DIR} -o ${OUTPUT_DIR} -p ${PATIENT} -pl ${PIPELINE}"
+        echo "python ${PROJECT_DIR}/registration.py -i ${INPUT_DIR} -o results -p ${PATIENT} -pl ${PIPELINE}"
     } >> reg_job.ksh
 
     # Submit the file in the queue and delete it after
