@@ -290,8 +290,8 @@ def main():
             "fixed_image": os.path.join(input_dir, str(patient), "spect_ct_volume.nii.gz"),
             "fixed_unet3d_label": os.path.join(input_dir, str(patient), "spect_ct_unet3d_liver.nii.gz"),
             "fixed_gt_label": os.path.join(input_dir, str(patient), "spect_ct_liver.nii.gz"),
-            "moving_image": os.path.join(input_dir, str(patient), "spect_mri_volume.nii.gz"),
-            "moving_label": os.path.join(input_dir, str(patient), "spect_mri_liver.nii.gz"),
+            "moving_image": os.path.join(input_dir, str(patient), "mri_volume.nii.gz"),
+            "moving_label": os.path.join(input_dir, str(patient), "mri_liver.nii.gz"),
             "patient": patient
         }
         for patient in os.listdir(input_dir)
