@@ -16,13 +16,14 @@ from monai.config import print_config
 from monai.data import DataLoader, CacheDataset
 from monai.networks.blocks import Warp
 from monai.networks.nets import LocalNet
-from monai.transforms import Compose, LoadImaged
+from monai.transforms import Compose, LoadImaged, Resized
 from monai.losses import DiceLoss, MultiScaleLoss, BendingEnergyLoss
 from monai.metrics import DiceMetric
 
 from registration import calculate_metrics
 from utils import setup_parser, create_dir, validate_paths
-from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, TR_BATCH_SIZE, VAL_BATCH_SIZE, DEVICE, PIN_MEMORY
+from config.training import ARCHITECTURE, NUM_EPOCHS, INIT_LR, TR_BATCH_SIZE, VAL_BATCH_SIZE, DEVICE, PIN_MEMORY, \
+    TEST_BATCH_SIZE
 
 print_config()
 
@@ -55,12 +56,12 @@ def print_time_logs(timer):
 
 
 # Extract the images from the torches and save them.
-def save_prediction(prediction, input_dir):
+def save_prediction(prediction, output_dir):
     patient = list(prediction.keys())[0]
     print(f"Saving predictions: {patient}")
 
-    patient_dir = os.path.join(input_dir, patient)
-    img_ref = sitk.ReadImage(f"./data/localnet/{patient}/ct_volume.nii.gz")
+    patient_dir = create_dir(output_dir, patient)
+    img_ref = sitk.ReadImage(f"./data/localnet/{patient}/spect_ct_volume.nii.gz")
 
     image = prediction[patient]["image_tensor"].cpu().numpy()[0, 0]
     image = np.swapaxes(image, 0, 2)
@@ -101,6 +102,18 @@ def transforms():
                     "moving_label"
                 ],
                 ensure_channel_first=True
+            ),
+            Resized(
+                keys=[
+                    "fixed_image",
+                    "fixed_unet3d_label",
+                    "fixed_gt_label",
+                    "moving_image",
+                    "moving_label"
+                ],
+                mode=("trilinear", "nearest", "nearest", "trilinear", "nearest"),
+                align_corners=(True, None, None, True, None),
+                spatial_size=(256, 256, 224),
             ),
         ]
     )
@@ -274,11 +287,11 @@ def main():
     # Load dataset file paths.
     data = [
         {
-            "fixed_image": os.path.join(input_dir, str(patient), "ct_volume.nii.gz"),
-            "fixed_unet3d_label": os.path.join(input_dir, str(patient), "ct_unet3d_liver.nii.gz"),
-            "fixed_gt_label": os.path.join(input_dir, str(patient), "ct_liver.nii.gz"),
-            "moving_image": os.path.join(input_dir, str(patient), "mri_volume.nii.gz"),
-            "moving_label": os.path.join(input_dir, str(patient), "mri_liver.nii.gz"),
+            "fixed_image": os.path.join(input_dir, str(patient), "spect_ct_volume.nii.gz"),
+            "fixed_unet3d_label": os.path.join(input_dir, str(patient), "spect_ct_unet3d_liver.nii.gz"),
+            "fixed_gt_label": os.path.join(input_dir, str(patient), "spect_ct_liver.nii.gz"),
+            "moving_image": os.path.join(input_dir, str(patient), "spect_mri_volume.nii.gz"),
+            "moving_label": os.path.join(input_dir, str(patient), "spect_mri_liver.nii.gz"),
             "patient": patient
         }
         for patient in os.listdir(input_dir)
@@ -288,6 +301,7 @@ def main():
     k_folds = KFold(n_splits=5, shuffle=True, random_state=seed)
     train_idx, val_idx = list(k_folds.split(data))[fold]
     train_files, val_files = [data[i] for i in train_idx], [data[i] for i in val_idx]
+    test_files = val_files
 
     print("***Training Patients***")
     for item in train_files:
@@ -297,13 +311,19 @@ def main():
     for item in val_files:
         print(item["patient"])
 
+    print("***Testing Patients***")
+    for item in test_files:
+        print(item["patient"])
+
     # Cache the transforms of the datasets.
     train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
     val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
+    test_ds = CacheDataset(data=test_files, transform=transforms(), cache_rate=1.0, num_workers=0)
 
     # Load the datasets.
     train_loader = DataLoader(train_ds, batch_size=TR_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=VAL_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
+    test_loader = DataLoader(test_ds, batch_size=TEST_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
 
     # Create LocalNet, losses and optimizer.
     model = LocalNet(
@@ -375,13 +395,14 @@ def main():
     model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
 
     # Inference the testing data and save the predictions.
-    inference_model(model, val_loader, warp_layer, input_dir)
+    fold_data_output = create_dir(model_dir, f"fold_{fold}_raw")
+    inference_model(model, test_loader, warp_layer, fold_data_output)
 
     # Calculate metrics.
-    patient_list = [item["patient"] for item in val_files]
+    patient_list = [item["patient"] for item in test_files]
     for patient in patient_list:
         patient_dir = os.path.join(input_dir, patient)
-        ct_gt_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
+        ct_gt_liver = os.path.join(patient_dir, "spect_ct_liver.nii.gz")
         mri_liver = os.path.join(patient_dir, "mri_liver.nii.gz")
         mri_liver_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
 

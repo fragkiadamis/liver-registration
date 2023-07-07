@@ -8,7 +8,7 @@ echo "Starting registration job submission."
 PROJECT_DIR="${WORKDIR}/liver-baseline-registration"
 VENV="${PROJECT_DIR}/venv/bin/activate"
 INPUT_DIR="${PROJECT_DIR}/data/nii_iso"
-PIPELINE="${PROJECT_DIR}/pipelines/baseline_unet3d_masks.json"
+PIPELINE="${PROJECT_DIR}/pipelines/baseline_unet3d_masks_bbox.json"
 
 # For each patient submit a registration job.
 for PATIENT_DIR in $INPUT_DIR/*

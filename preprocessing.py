@@ -114,29 +114,6 @@ def resample(pair, spacing=None, size=None):
         run(arg_list)
 
 
-# Organise the directory with a fold structure to make sure that data will not be leaked.
-def create_kfold_strucutre(data_dir):
-    k_folds = KFold(n_splits=5, shuffle=True)
-    data = os.listdir(data_dir)
-    for i, idx in enumerate(k_folds.split(data)):
-        fold_dir = create_dir(data_dir, f"fold_{i}")
-        train_dir = create_dir(fold_dir, f"training")
-        val_dir = create_dir(fold_dir, f"validation")
-
-        train_idx, val_idx = list(idx)
-        for idx in train_idx:
-            patient_dir = os.path.join(data_dir, data[idx])
-            copytree(patient_dir, os.path.join(train_dir, data[idx]))
-
-        for idx in val_idx:
-            patient_dir = os.path.join(data_dir, data[idx])
-            copytree(patient_dir, os.path.join(val_dir, data[idx]))
-
-    for patient in data:
-        patient_dir = os.path.join(data_dir, patient)
-        delete_dir(patient_dir)
-
-
 # For each mask, create a boundary box that surrounds the mask.
 def create_bounding_boxes(pair):
     # Convert to nifty and save the image.
@@ -281,7 +258,7 @@ def dl_seg_preprocessing(input_dir, output_dir):
 
 
 # The preprocessing pipeline for pairwise deep learning registration.
-def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
+def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=0):
     # Create the necessary structure.
     for patient in os.listdir(input_dir):
         print(f"-Processing {patient}")
@@ -292,8 +269,12 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         ct_unet3d_label = os.path.join(input_dir, patient, "spect_ct_unet3d_liver.nii.gz")
 
         if aligned_mri_dir:
-            mri_volume = os.path.join(aligned_mri_dir, patient, "01_Affine_KS", "mri_volume_reg.nii.gz")
-            mri_label = os.path.join(aligned_mri_dir, patient, "01_Affine_KS", "mri_liver_reg.nii.gz")
+            mri_volume = os.path.join(
+                input_dir, patient, "results", "baseline_unet3d_masks", "01_Affine_KS", "mri_volume_reg.nii.gz"
+            )
+            mri_label = os.path.join(
+                input_dir, patient, "results", "baseline_unet3d_masks", "01_Affine_KS", "mri_liver_reg.nii.gz"
+            )
         else:
             mri_volume = os.path.join(input_dir, patient, "mri_volume.nii.gz")
             mri_label = os.path.join(input_dir, patient, "mri_liver.nii.gz")
@@ -311,17 +292,14 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         }
 
         # Process the images.
-        print("\t-Resample images and labels...")
-        resample(pair, spacing=(2, 2, 2), size=(256, 256, 224))
-        print("\t-Align MRI to Center of Gravity")
-        align_to_cog(pair)
+        # print("\t-Resample images and labels...")
+        # resample(pair, spacing=(2, 2, 2), size=(256, 256, 224))
+        # print("\t-Align MRI to Center of Gravity")
+        # align_to_cog(pair)
         print("\t-Cast images to float...")
         cast_to_type([pair["CT"]["volume"], pair["MRI"]["volume"]], "float")
         print("\t-Image normalization...")
         gaussian_normalize([pair["CT"]["volume"], pair["MRI"]["volume"]])
-
-    # Create the fold structure.
-    create_kfold_strucutre(output_dir)
 
 
 def main():
@@ -336,15 +314,15 @@ def main():
     validate_paths(input_dir, output_dir)
 
     if preprocessing_type == "elx":
-        delete_dir(output_dir)
+        # delete_dir(output_dir)
         copytree(input_dir, output_dir)
         elastix_preprocessing(input_dir, output_dir)
     elif preprocessing_type == "dls":
-        delete_dir(output_dir)
+        # delete_dir(output_dir)
         create_dir(dir_name, output_dir)
         dl_seg_preprocessing(input_dir, output_dir)
     elif preprocessing_type == "dlr":
-        delete_dir(output_dir)
+        # delete_dir(output_dir)
         create_dir(dir_name, output_dir)
         dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=aligned_mri_dir)
     else:
