@@ -1,9 +1,7 @@
 # Import necessary files and libraries.
 import os
-from subprocess import run
+from subprocess import run, check_output
 
-# from pydicom import read_file
-# import h5py
 import nibabel as nib
 import numpy as np
 
@@ -58,43 +56,8 @@ def rename_dicom_structure(study_input):
             rename_instance(std_dir, dicom_file, new_name)
 
 
-# Lower filenames and fix any inconsistency (e.g. foie -> liver).
-def fix_filenames(patient_dir, modality):
-    segmentations = []
-    for filename in os.listdir(patient_dir):
-        # Only the RT Structs of the current modality need fixing.
-        if "volume" in filename or modality not in filename:
-            continue
-
-        new_filename = filename.lower()
-        # Make the RT structures filename consistent. If it's a necrosis segmentation or necrosis related, delete it.
-        if "necrosis" in new_filename:
-            # new_filename = f"{modality}_necrosis.nii.gz"
-            print(f"\t\t\t-Deleting file: {filename}")
-            os.remove(os.path.join(patient_dir, filename))
-            continue
-
-        elif "foie" in new_filename or "liver" in new_filename:
-            new_filename = f"{modality}_liver.nii.gz"
-
-        elif "tumeur" in new_filename or "tumor" in new_filename or "tum" in new_filename:
-            new_filename = f"{modality}_tumor.nii.gz"
-
-        split_name = new_filename.split(".")
-        base_file_name = split_name[0]
-        base_file_name = fix_duplicate(patient_dir, base_file_name)
-        new_filename = f"{base_file_name}.nii.gz"
-        print(f"\t\t\t-Renaming file: {filename} ---> {new_filename}")
-        rename_instance(patient_dir, filename, new_filename)
-
-        if f"{modality}_tumor" in new_filename:
-            segmentations.append(new_filename)
-
-    return segmentations
-
-
 # Create one segmentation by adding all the different segmentations of the specified anatomy.
-def add_segmentations(segmentations, volume_path, modality, patient_dir):
+def add_segmentations(segmentations, volume_path, patient_dir):
     # Get the respective volume information.
     volume_nii = nib.load(volume_path)
     volume_size = np.array(volume_nii.get_fdata()).shape
@@ -115,9 +78,61 @@ def add_segmentations(segmentations, volume_path, modality, patient_dir):
         [os.remove(os.path.join(patient_dir, roi)) for roi in segmentations]
 
     # Save the total roi.
+    new_filename = "total_tumor.nii.gz"
     total_roi = total_roi.astype(np.uint8)
     total_roi = nib.Nifti1Image(total_roi, header=volume_nii.header, affine=volume_nii.affine)
-    nib.save(total_roi, os.path.join(patient_dir, f"{modality}_tumor.nii.gz"))
+    nib.save(total_roi, os.path.join(patient_dir, new_filename))
+
+    return new_filename
+
+
+# Lower filenames and fix any inconsistency (e.g. foie -> liver).
+def fix_filenames(patient_dir, extracted_files, modality, volume_path):
+    print(f"\t\t\t-Extracted Files: {extracted_files}")
+
+    # Delete necrosis related files (not necessary).
+    [
+        (print(f"\t\t\t-Deleting file: {file}", -1), os.remove(os.path.join(patient_dir, file)))
+        for file in extracted_files if "necrosis" in file.lower()
+    ]
+
+    # Separate liver & tumor segmentations.
+    liver_files = [file for file in extracted_files if "liver" in file.lower() or "foie" in file.lower()]
+    tumor_files = [file for file in extracted_files
+                   if "tumor" in file.lower() or "tumeur" in file.lower() or "tum" in file.lower()]
+
+    # Fix the liver filenames, distinguish between the liver and the registered mri contours.
+    for file in liver_files:
+        if "ct" in modality and ("mri" in file.lower() or "irm" in file.lower()):
+            new_filename = "mri_liver_reg.nii.gz"
+        else:
+            new_filename = f"{modality}_liver.nii.gz"
+        print(f"\t\t\t-Renaming file: {file} ---> {new_filename}", 0)
+        rename_instance(patient_dir, file, new_filename)
+
+    # Separate MRI tumor and CT tumor delineations.
+    tumors_reg = [file for file in tumor_files if "ct" in modality and ("mri" in file.lower() or "irm" in file.lower())]
+    tumors = [file for file in tumor_files if file not in tumors_reg]
+
+    if len(tumors_reg) > 0:
+        new_filename = "mri_tumor_reg.nii.gz"
+        if len(tumors_reg) > 1:
+            print(f"\t\t\t-Adding the segmentations: {tumors_reg}", 1)
+            file = add_segmentations(tumors_reg, volume_path, patient_dir)
+        else:
+            file = tumors_reg[0]
+        print(f"\t\t\t-Renaming file: {file} ---> {new_filename}", 2)
+        rename_instance(patient_dir, file, new_filename)
+
+    if len(tumors) > 0:
+        new_filename = f"{modality}_tumor.nii.gz"
+        if len(tumors) > 1:
+            print(f"\t\t\t-Adding the segmentations: {tumors}", 3)
+            file = add_segmentations(tumors, volume_path, patient_dir)
+        else:
+            file = tumors[0]
+        print(f"\t\t\t-Renaming file: {file} ---> {new_filename}", 4)
+        rename_instance(patient_dir, file, new_filename)
 
 
 # Extract the nifty images from the DICOM series and the RT Structures as well as the transformation parameters from
@@ -132,7 +147,15 @@ def extract_from_dicom(study_input, patient_output):
 
     # Extract the volume from the series in nifty format.
     volume_path = ""
-    modality = "mri_def" if "ceMRI-DEF" in study_input else "mri" if "ceMRI" in study_input else "ct"
+    modality = None
+    if "ceMRI-DEF" in study_input:
+        modality = "mri_def"
+    elif "ceMRI" in study_input:
+        modality = "mri"
+    elif "SPECT-CT" in study_input:
+        modality = "spect_ct"
+    elif "PET-CT" in study_input:
+        modality = "pet_ct"
 
     for series in dicom_series:
         series_path = os.path.join(study_input, series)
@@ -142,42 +165,24 @@ def extract_from_dicom(study_input, patient_output):
         run(["clitkDicom2Image", *series_files, "-o", volume_path, "-t", "10"])
 
     # Extract the masks from the RT structures in nifty format. Use the extracted volume from above.
-    for i, rt_structure in enumerate(dicom_rtstr):
+    for rt_structure in dicom_rtstr:
         rtstruct_path = os.path.join(study_input, rt_structure)
         rtstruct_file = get_files(rtstruct_path)[0]
         print(f"\t\t-Extract RT struct: {rt_structure} ---> {patient_output}/")
-        run(
+        out = check_output(
             ["clitkDicomRTStruct2Image", "-i", rtstruct_file, "-j", volume_path,
-             "-o", f"{patient_output}/{modality}_", "--niigz", "-t", "10"]
+             "-o", f"{patient_output}/", "--niigz", "-t", "10", "-v"]
         )
 
-        # Fix the filenames of the rois and return the tumor segmentations in the last run.
-        if i == len(dicom_rtstr) - 1:
-            tumor_rois = fix_filenames(patient_output, modality)
-            # If the tumor is segmented in multiple files, add the rois in one file.
-            if len(tumor_rois) > 1:
-                print(f"\t\t-Adding the fragmented tumor segmentations into one file.")
-                add_segmentations(tumor_rois, volume_path, modality, patient_output)
+        extracted_files = []
+        lines = out.decode().split("\n")
+        for line in lines:
+            if line:
+                file = line.rstrip().split("/")[-1]
+                extracted_files.append(file)
 
-    # TODO: Make sure that the correct information is being extracted.
-    # for registration in dicom_reg:
-    #     registration_path = os.path.join(study_input, registration)
-    #     registration_file = get_files(registration_path)[0]
-    #
-    #     print(f"\t\t-Extract transform: {registration}")
-    #     dcm_reg = read_file(registration_file)
-    #     vector_grid = np.asarray(dcm_reg.DeformableRegistrationSequence[-1].
-    #                              DeformableRegistrationGridSequence[-1][0x64, 0x09].value)
-    #     reg_matrix = np.asarray(dcm_reg.DeformableRegistrationSequence[-1].
-    #                             PreDeformationMatrixRegistrationSequence[-1][0x3006, 0xc6].value)
-    #
-    #     print(dir(dcm_reg.DeformableRegistrationSequence[-1]))
-    #
-    #     file = open(f"{study_output}/transformation.mat", "w+")
-    #     file.write(str(reg_matrix))
-    #     file.close()
-    #     h5f = h5py.File(f"{study_output}/transformation.h5", "w")
-    #     h5f.create_dataset('dataset_1', data=reg_matrix)
+        # Fix the filenames of the rois and return the tumor segmentations in the last run.
+        fix_filenames(patient_output, extracted_files, modality, volume_path)
 
 
 # Compare the two volumes two see if they are exact the same or similar.
@@ -242,14 +247,14 @@ def main():
     validate_paths(input_dir, output_dir)
 
     # For each patient of the dataset.
-    for patient in os.listdir(input_dir):
-        print(f"\n-Extracting patient: {patient}")
+    for i, patient in enumerate(os.listdir(input_dir)):
+        print(f"\n-{i} Extracting patient: {patient}")
         patient_input = os.path.join(input_dir, patient)
         patient_output = create_dir(output_dir, patient)
 
         # For each study of the patient (ceMRI, SPECT-CT).
         for study in os.listdir(patient_input):
-            if study == "PET-CT":
+            if study == "PET-CT" or study == "ceMRI-DEF":
                 continue
 
             print(f"\t-Study: {study}")

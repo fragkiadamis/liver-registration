@@ -1,11 +1,11 @@
 {
   "name": "baseline_images",
-  "studies": {"fixed": "ct", "moving": "mri"},
+  "studies": {"fixed": "spect_ct", "moving": "mri"},
   "registration_steps": [
     {
       "name": "01_Affine_MI",
-      "images": {"fixed": "ct_volume.nii.gz", "moving": "mri_volume.nii.gz"},
-      "masks": {"fixed": "ct_unet3d_liver.nii.gz", "moving": "mri_liver.nii.gz"},
+      "images": {"fixed": "spect_ct_volume.nii.gz", "moving": "mri_volume.nii.gz"},
+      "masks": {"fixed": "spect_ct_unet3d_liver.nii.gz", "moving": "mri_liver.nii.gz"},
       "parameters": "parameters/Affine_MI.txt",
       "def_field": 0,
       "result": "mri_liver_reg",

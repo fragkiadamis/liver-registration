@@ -123,14 +123,13 @@ def main():
     dir_name = os.path.dirname(__file__)
     args = setup_parser(f"{dir_name}/config/elastix_cli_parser.json")
     input_dir = os.path.join(dir_name, args.i)
-    output_dir = os.path.join(dir_name, args.o)
     pipeline_file = os.path.join(dir_name, args.pl)
     patient = args.p
     patient_input = os.path.join(input_dir, patient)
+    output_dir = create_dir(patient_input, args.o)
 
     # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
-    create_dir(dir_name, output_dir)
 
     # Open file and create the pipeline dictionary from json.
     pl = open(pipeline_file)
@@ -157,8 +156,6 @@ def main():
 
     # Delete pipeline directory if it already exists and create a new one.
     pipeline_output = create_dir(output_dir, pipeline["name"])
-    delete_dir(os.path.join(pipeline_output, patient))
-    patient_output = create_dir(pipeline_output, patient)
 
     registration = None
     for step in pipeline["registration_steps"]:
@@ -172,7 +169,7 @@ def main():
         } if "masks" in step else None
 
         parameters_file, transform_name = os.path.join(dir_name, step["parameters"]), step["name"]
-        transform_output = create_dir(patient_output, transform_name)
+        transform_output = create_dir(pipeline_output, transform_name)
 
         # Perform the registration, which will return a transformation file. This transformation will be used in
         # the next registration step of the pipeline as initial transform "t0".
@@ -200,7 +197,7 @@ def main():
             })
             print(f"\t\t-{mask}: {results[mask]}.")
 
-    with open(f"{patient_output}/evaluation.json", "w") as fp:
+    with open(f"{pipeline_output}/evaluation.json", "w") as fp:
         json.dump(results, fp)
 
 

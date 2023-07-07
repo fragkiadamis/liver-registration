@@ -7,6 +7,7 @@ from subprocess import run, check_output
 import nibabel as nib
 import SimpleITK as sitk
 import numpy as np
+from sklearn.model_selection import KFold
 
 from registration import calculate_metrics
 from utils import setup_parser, validate_paths, delete_dir, create_dir, ImageProperty
@@ -113,6 +114,29 @@ def resample(pair, spacing=None, size=None):
         run(arg_list)
 
 
+# Organise the directory with a fold structure to make sure that data will not be leaked.
+def create_kfold_strucutre(data_dir):
+    k_folds = KFold(n_splits=5, shuffle=True)
+    data = os.listdir(data_dir)
+    for i, idx in enumerate(k_folds.split(data)):
+        fold_dir = create_dir(data_dir, f"fold_{i}")
+        train_dir = create_dir(fold_dir, f"training")
+        val_dir = create_dir(fold_dir, f"validation")
+
+        train_idx, val_idx = list(idx)
+        for idx in train_idx:
+            patient_dir = os.path.join(data_dir, data[idx])
+            copytree(patient_dir, os.path.join(train_dir, data[idx]))
+
+        for idx in val_idx:
+            patient_dir = os.path.join(data_dir, data[idx])
+            copytree(patient_dir, os.path.join(val_dir, data[idx]))
+
+    for patient in data:
+        patient_dir = os.path.join(data_dir, patient)
+        delete_dir(patient_dir)
+
+
 # For each mask, create a boundary box that surrounds the mask.
 def create_bounding_boxes(pair):
     # Convert to nifty and save the image.
@@ -133,7 +157,7 @@ def create_bounding_boxes(pair):
         bounding_box_mask = np.zeros(mask_data.shape)
         bounding_box_mask[x_min:x_max, y_min:y_max, z_min:z_max] = 1
 
-        # Save bounding boxes.
+        # Save bounding box.
         split_path = liver.split(".")
         bounding_box_mask = bounding_box_mask.astype(np.uint8)
         bounding_box_nii = nib.Nifti1Image(bounding_box_mask, header=mask_nii.header, affine=mask_nii.affine)
@@ -182,18 +206,14 @@ def min_max_normalization(image_paths):
 
 # The preprocessing pipeline for data use from the elastix software.
 def elastix_preprocessing(input_dir, output_dir):
-    # Create the respective output structures. Those will be used for registration.
-    delete_dir(output_dir)
-    copytree(input_dir, output_dir)
-
     for patient in os.listdir(output_dir):
         patient_dir = os.path.join(output_dir, patient)
 
         pair = {
             "CT": {
-                "volume": os.path.join(patient_dir, "ct_volume.nii.gz"),
-                "liver": os.path.join(patient_dir, "ct_liver.nii.gz"),
-                "unet3d_liver": os.path.join(patient_dir, "ct_unet3d_liver.nii.gz"),
+                "volume": os.path.join(patient_dir, "spect_ct_volume.nii.gz"),
+                "liver": os.path.join(patient_dir, "spect_ct_liver.nii.gz"),
+                "unet3d_liver": os.path.join(patient_dir, "spect_ct_unet3d_liver.nii.gz"),
             },
             "MRI": {
                 "volume": os.path.join(patient_dir, "mri_volume.nii.gz"),
@@ -202,9 +222,9 @@ def elastix_preprocessing(input_dir, output_dir):
         }
 
         # Add conditionally the tumor path, because some RTStructs might not contain tumor labels.
-        if os.path.exists(os.path.join(patient_dir, "ct_tumor.nii.gz")):
+        if os.path.exists(os.path.join(patient_dir, "spect_ct_tumor.nii.gz")):
             pair["CT"].update({
-                "tumor": os.path.join(patient_dir, "ct_tumor.nii.gz")
+                "tumor": os.path.join(patient_dir, "spect_ct_tumor.nii.gz")
             })
 
         if os.path.exists(os.path.join(patient_dir, "mri_tumor.nii.gz")):
@@ -230,8 +250,8 @@ def dl_seg_preprocessing(input_dir, output_dir):
     for patient in os.listdir(input_dir):
         patient_dir = os.path.join(input_dir, patient)
 
-        ct_volume = os.path.join(patient_dir, "ct_volume.nii.gz")
-        ct_liver = os.path.join(patient_dir, "ct_liver.nii.gz")
+        ct_volume = os.path.join(patient_dir, "spect_ct_volume.nii.gz")
+        ct_liver = os.path.join(patient_dir, "spect_ct_liver.nii.gz")
 
         pair = {
             "CT": {
@@ -267,9 +287,9 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         print(f"-Processing {patient}")
         patient_dir = create_dir(output_dir, patient)
 
-        ct_volume = os.path.join(input_dir, patient, "ct_volume.nii.gz")
-        ct_gt_label = os.path.join(input_dir, patient, "ct_liver.nii.gz")
-        ct_unet3d_label = os.path.join(input_dir, patient, "ct_unet3d_liver.nii.gz")
+        ct_volume = os.path.join(input_dir, patient, "spect_ct_volume.nii.gz")
+        ct_gt_label = os.path.join(input_dir, patient, "spect_ct_liver.nii.gz")
+        ct_unet3d_label = os.path.join(input_dir, patient, "spect_ct_unet3d_liver.nii.gz")
 
         if aligned_mri_dir:
             mri_volume = os.path.join(aligned_mri_dir, patient, "01_Affine_KS", "mri_volume_reg.nii.gz")
@@ -280,9 +300,9 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
 
         pair = {
             "CT": {
-                "volume": copy(ct_volume, os.path.join(patient_dir, "ct_volume.nii.gz")),
-                "gt_liver": copy(ct_gt_label, os.path.join(patient_dir, "ct_liver.nii.gz")),
-                "unet3d_liver": copy(ct_unet3d_label, os.path.join(patient_dir, "ct_unet3d_liver.nii.gz"))
+                "volume": copy(ct_volume, os.path.join(patient_dir, "spect_ct_volume.nii.gz")),
+                "gt_liver": copy(ct_gt_label, os.path.join(patient_dir, "spect_ct_liver.nii.gz")),
+                "unet3d_liver": copy(ct_unet3d_label, os.path.join(patient_dir, "spect_ct_unet3d_liver.nii.gz"))
             },
             "MRI": {
                 "volume": copy(mri_volume, os.path.join(patient_dir, "mri_volume.nii.gz")),
@@ -300,6 +320,9 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=None):
         print("\t-Image normalization...")
         gaussian_normalize([pair["CT"]["volume"], pair["MRI"]["volume"]])
 
+    # Create the fold structure.
+    create_kfold_strucutre(output_dir)
+
 
 def main():
     dir_name = os.path.dirname(__file__)
@@ -313,10 +336,16 @@ def main():
     validate_paths(input_dir, output_dir)
 
     if preprocessing_type == "elx":
+        delete_dir(output_dir)
+        copytree(input_dir, output_dir)
         elastix_preprocessing(input_dir, output_dir)
     elif preprocessing_type == "dls":
+        delete_dir(output_dir)
+        create_dir(dir_name, output_dir)
         dl_seg_preprocessing(input_dir, output_dir)
     elif preprocessing_type == "dlr":
+        delete_dir(output_dir)
+        create_dir(dir_name, output_dir)
         dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=aligned_mri_dir)
     else:
         print("Provide a valid type for preprocessing.")

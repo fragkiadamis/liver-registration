@@ -100,17 +100,21 @@ def postprocess_segmentations(input_dir, output_dir):
         patient = mask.split(".")[0]
         patient_output = os.path.join(output_dir, patient)
 
-        img_path = os.path.join(patient_output, "ct_unet3d_liver.nii.gz")
+        img_path = os.path.join(patient_output, "spect_ct_unet3d_liver.nii.gz")
         sitk.WriteImage(img_out_itk, img_path)
 
-        like_img = os.path.join(patient_output, "ct_volume.nii.gz")
+        like_img = os.path.join(patient_output, "spect_ct_volume.nii.gz")
         run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img, "--interp=0"])
 
-        ground_truth_label = os.path.join(patient_output, "ct_liver.nii.gz")
-        output = check_output(["clitkDice", "-i", img_path, "-j", ground_truth_label])
-        dice = float(output.decode())
-        dice_list.append(dice)
-        print(f"\t-{mask} Dice: {dice}")
+        ct_gt_label = os.path.join(patient_output, "spect_ct_liver.nii.gz")
+        results = {
+            "liver": {
+                "U-NET3D": calculate_metrics(ct_gt_label, img_path)
+            }
+        }
+        print(results)
+        with open(f"{patient_output}/unet3d_evaluation.json", "w") as fp:
+            json.dump(results, fp)
 
     return dice_list
 
@@ -127,8 +131,8 @@ def postprocess_registrations(input_dir, output_dir):
         mri_volume_out = os.path.join(patient_output_dir, "mri_volume_pred.nii.gz")
         mri_label_out = os.path.join(patient_output_dir, "mri_liver_pred.nii.gz")
 
-        ct_ref_path = os.path.join(patient_output_dir, "ct_volume.nii.gz")
-        ct_gt_label = os.path.join(patient_output_dir, "ct_liver.nii.gz")
+        ct_ref_path = os.path.join(patient_output_dir, "spect_ct_volume.nii.gz")
+        ct_gt_label = os.path.join(patient_output_dir, "spect_ct_liver.nii.gz")
 
         arg_list = [
             "clitkAffineTransform", "-i", mri_volume_pred, "-o", mri_volume_out, "--interp=2", "-l", ct_ref_path
@@ -146,7 +150,7 @@ def postprocess_registrations(input_dir, output_dir):
         }
         print(results)
 
-        with open(f"{patient_output_dir}/evaluation.json", "w") as fp:
+        with open(f"{patient_output_dir}/localnet_evaluation.json", "w") as fp:
             json.dump(results, fp)
 
 
@@ -157,9 +161,8 @@ def main():
     output_dir = create_dir(dir_name, args.o)
     postprocessing_type = args.t
 
-    dice_list = []
     if postprocessing_type == "seg":
-        dice_list = postprocess_segmentations(input_dir, output_dir)
+        postprocess_segmentations(input_dir, output_dir)
     elif postprocessing_type == "reg":
         postprocess_registrations(input_dir, output_dir)
 
