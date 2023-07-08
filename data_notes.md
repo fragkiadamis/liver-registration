@@ -17,8 +17,7 @@
 | JaneDoe_ANON69091 | JohnDoe_ANON92476 | JohnDoe_ANON98767 | JohnDoe_ANON27417 | JohnDoe_ANON46160 |                   |
 
 ## Patient with problematic labels (keep out of the dataset):
-1. JaneDoe_ANON47965
-2. JohnDoe_ANON77471
+1. JohnDoe_ANON77471
 
 ## Patients that the tumor is visible on the CT Scan (not all are confirmed):
 1. JohnDoe_ANON45696               

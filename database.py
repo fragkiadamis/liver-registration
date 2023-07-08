@@ -1,9 +1,12 @@
 # Import necessary files and libraries.
 import os
+from struct import unpack
 from subprocess import run, check_output
 
+import SimpleITK as sitk
 import nibabel as nib
 import numpy as np
+from pydicom import read_file
 
 from utils import setup_parser, validate_paths, rename_instance, create_dir, delete_dir
 
@@ -135,6 +138,53 @@ def fix_filenames(patient_dir, extracted_files, modality, volume_path):
         rename_instance(patient_dir, file, new_filename)
 
 
+# Extract global registration.
+def get_global_transform(dcm_reg, seq):
+    # Get registration info.
+    reg_info = None
+    if seq == "pre":
+        reg_info = dcm_reg["DeformableRegistrationSequence"][-1]["PreDeformationMatrixRegistrationSequence"][0]
+    elif seq == "post":
+        reg_info = dcm_reg["DeformableRegistrationSequence"][-1]["PostDeformationMatrixRegistrationSequence"][0]
+
+    # Extract transformation matrix.
+    transformation_matrix = np.asarray(reg_info.FrameOfReferenceTransformationMatrix)
+    # Reshape it to remove last row and re-flatten it.
+    transformation_matrix = transformation_matrix.reshape((4, 4))[:3, :3]
+    transformation_matrix = sitk.VectorDouble(transformation_matrix.flatten())
+
+    # Create transform with the transformation matrix.
+    transform = sitk.AffineTransform(3)
+    transform.SetMatrix(transformation_matrix)
+
+    # And return it.
+    return transform
+
+
+# Extract deformable registration.
+def get_deformable_transform(dcm_reg):
+    # Get registration info.
+    reg_info = dcm_reg["DeformableRegistrationSequence"][-1]["DeformableRegistrationGridSequence"][0]
+
+    # Extract grid buffer and convert to numbers.
+    dvf_vals_raw = reg_info.VectorGridData
+    dvf_vals = unpack(f"<{len(dvf_vals_raw) // 4}f", dvf_vals_raw)
+
+    # Extract grid properties.
+    dvf_grid_size = reg_info["GridDimensions"].value
+    dvf_grid_res = reg_info["GridResolution"].value
+    dvf_grid_origin = reg_info["ImagePositionPatient"].value
+
+    # Create a grid object.
+    dvf_arr = np.reshape(dvf_vals, dvf_grid_size[::-1] + [3, ])
+    dvf_img = sitk.GetImageFromArray(dvf_arr)
+    dvf_img.SetSpacing(dvf_grid_res)
+    dvf_img.SetOrigin(dvf_grid_origin)
+
+    # convert it to a transform and return it.
+    return sitk.DisplacementFieldTransform(dvf_img)
+
+
 # Extract the nifty images from the DICOM series and the RT Structures as well as the transformation parameters from
 # the REG files from the manual registration.
 def extract_from_dicom(study_input, patient_output):
@@ -144,6 +194,7 @@ def extract_from_dicom(study_input, patient_output):
 
     dicom_series = [x for x in os.listdir(study_input) if x == "MR" or x == "MR_DEF" or x == "CT"]
     dicom_rtstr = [x for x in os.listdir(study_input) if x == "RTst" or x == "RTst_DEF"]
+    # dicom_reg = [x for x in os.listdir(study_input) if x == "REG"]
 
     # Extract the volume from the series in nifty format.
     volume_path = ""
@@ -183,6 +234,63 @@ def extract_from_dicom(study_input, patient_output):
 
         # Fix the filenames of the rois and return the tumor segmentations in the last run.
         fix_filenames(patient_output, extracted_files, modality, volume_path)
+
+    # for registration in dicom_reg:
+    #     study = study_input.split("/")[-1]
+    #     if study != "ceMRI":
+    #         break
+    #
+    #     registration_path = os.path.join(study_input, registration)
+    #     registration_file = get_files(registration_path)[0]
+    #
+    #     print(f"\t\t-Extract transform: {registration}")
+    #     dcm_reg = read_file(registration_file)
+    #
+    #     mri_items = {}
+    #     mri_items.update({
+    #         item.split(".")[0].split("_")[1]: item for item in os.listdir(patient_output) if item.startswith("mri_")
+    #     })
+    #
+    #     ct_volume_path = os.path.join(patient_output, "spect_ct_volume.nii.gz")
+    #
+    #     for item in mri_items:
+    #         if "reg" in mri_items[item]:
+    #             continue
+    #
+    #         # inp = os.path.join(patient_output, mri_items[item])
+    #         # run(["clitkAffineTransform", "-i", inp, "-o", inp, "-l", f"{ct_volume_path}"])
+    #         # Read the image.
+    #         item_path = os.path.join(patient_output, mri_items[item])
+    #         item_img = sitk.ReadImage(item_path)
+    #         item_data = sitk.GetArrayFromImage(item_img)
+    #         item_min = float(np.min(item_data))
+    #
+    #         # item_img.SetSpacing(ct_volume.GetSpacing())
+    #         # item_img.SetOrigin(ct_volume.GetOrigin())
+    #         # item_img.SetDirection(ct_volume.GetDirection())
+    #
+    #         # Set up the interpolator.
+    #         interpolator = sitk.sitkBSpline if item == "volume" else sitk.sitkNearestNeighbor
+    #
+    #         # Perform registration.
+    #         pre_deformable_reg = get_global_transform(dcm_reg, seq="pre")
+    #         transformed = sitk.Resample(
+    #             item_img, pre_deformable_reg, interpolator=interpolator,
+    #             defaultPixelValue=item_min, outputPixelType=sitk.sitkUInt16
+    #         )
+    #
+    #         deformable_transform = get_deformable_transform(dcm_reg)
+    #         transformed = sitk.Resample(
+    #             transformed, deformable_transform, interpolator=interpolator,
+    #             defaultPixelValue=item_min, outputPixelType=sitk.sitkUInt16
+    #         )
+    #
+    #         post_deformable_reg = get_global_transform(dcm_reg, seq="post")
+    #         transformed = sitk.Resample(
+    #             transformed, post_deformable_reg, interpolator=interpolator,
+    #             defaultPixelValue=item_min, outputPixelType=sitk.sitkUInt16
+    #         )
+    #         sitk.WriteImage(transformed, f"{patient_output}/mri_{item}_reg.nii.gz")
 
 
 # Compare the two volumes two see if they are exact the same or similar.
