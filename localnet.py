@@ -63,30 +63,14 @@ def save_prediction(prediction, output_dir):
     patient_dir = create_dir(output_dir, patient)
     img_ref = sitk.ReadImage(f"./data/localnet/{patient}/spect_ct_volume.nii.gz")
 
-    image = prediction[patient]["image_tensor"].cpu().numpy()[0, 0]
-    image = np.swapaxes(image, 0, 2)
-    image = sitk.GetImageFromArray(image)
-    image.SetSpacing(img_ref.GetSpacing())
-    image.SetOrigin(img_ref.GetOrigin())
-    image.SetDirection(img_ref.GetDirection())
-
-    label = prediction[patient]["label_tensor"].cpu().numpy()[0, 0]
-    label = np.swapaxes(label, 0, 2)
-    label = sitk.GetImageFromArray(label)
-    label.SetSpacing(img_ref.GetSpacing())
-    label.SetOrigin(img_ref.GetOrigin())
-    label.SetDirection(img_ref.GetDirection())
-
-    ddf = prediction[patient]["ddf"].cpu().numpy()[0, 0]
-    ddf = np.swapaxes(ddf, 0, 2)
-    ddf = sitk.GetImageFromArray(ddf)
-    ddf.SetSpacing(img_ref.GetSpacing())
-    ddf.SetOrigin(img_ref.GetOrigin())
-    ddf.SetDirection(img_ref.GetDirection())
-
-    sitk.WriteImage(image, f"{patient_dir}/mri_volume_pred.nii.gz")
-    sitk.WriteImage(label, f"{patient_dir}/mri_liver_pred.nii.gz")
-    sitk.WriteImage(label, f"{patient_dir}/ddf_pred.nii.gz")
+    for item in ["volume", "liver", "ddf"]:
+        image = prediction[patient][item].cpu().numpy()[0, 0]
+        image = np.swapaxes(image, 0, 2)
+        image = sitk.GetImageFromArray(image)
+        image.SetSpacing(img_ref.GetSpacing())
+        image.SetOrigin(img_ref.GetOrigin())
+        image.SetDirection(img_ref.GetDirection())
+        sitk.WriteImage(image, f"{patient_dir}/mri_{item}_pred.nii.gz")
 
 
 # Preprocessing and data augmentation.
@@ -256,8 +240,8 @@ def inference_model(model, test_loader, warp_layer, output_dir):
 
             save_prediction({
                 test_data["patient"][0]: {
-                    "image_tensor": x_pred,
-                    "label_tensor": y_pred,
+                    "volume": x_pred,
+                    "liver": y_pred,
                     "ddf": ddf
                 }
             }, output_dir)
