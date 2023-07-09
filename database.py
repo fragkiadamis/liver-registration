@@ -101,13 +101,17 @@ def fix_filenames(patient_dir, extracted_files, modality, volume_path):
 
     # Separate liver & tumor segmentations.
     liver_files = [file for file in extracted_files if "liver" in file.lower() or "foie" in file.lower()]
-    tumor_files = [file for file in extracted_files
-                   if "tumor" in file.lower() or "tumeur" in file.lower() or "tum" in file.lower()]
+    tumor_files = [
+        file for file in extracted_files
+        if "tumor" in file.lower() or \
+           "tumeur" in file.lower() or \
+           ("tum" in file.lower() and "necrosis" not in file.lower())
+    ]
 
     # Fix the liver filenames, distinguish between the liver and the registered mri contours.
     for file in liver_files:
         if "ct" in modality and ("mri" in file.lower() or "irm" in file.lower()):
-            new_filename = "mri_liver_reg.nii.gz"
+            new_filename = "spect_ct_liver_from_mri.nii.gz"
         else:
             new_filename = f"{modality}_liver.nii.gz"
         print(f"\t\t\t-Renaming file: {file} ---> {new_filename}", 0)
@@ -118,7 +122,7 @@ def fix_filenames(patient_dir, extracted_files, modality, volume_path):
     tumors = [file for file in tumor_files if file not in tumors_reg]
 
     if len(tumors_reg) > 0:
-        new_filename = "mri_tumor_reg.nii.gz"
+        new_filename = "spect_ct_tumor_from_mri.nii.gz"
         if len(tumors_reg) > 1:
             print(f"\t\t\t-Adding the segmentations: {tumors_reg}", 1)
             file = add_segmentations(tumors_reg, volume_path, patient_dir)
@@ -200,7 +204,7 @@ def extract_from_dicom(study_input, patient_output):
     volume_path = ""
     modality = None
     if "ceMRI-DEF" in study_input:
-        modality = "mri_def"
+        modality = "mri_manual_reg"
     elif "ceMRI" in study_input:
         modality = "mri"
     elif "SPECT-CT" in study_input:
