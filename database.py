@@ -352,7 +352,7 @@ def main():
     dir_name = os.path.dirname(__file__)
     args = setup_parser(f"{dir_name}/config/database_parser.json")
     input_dir = os.path.join(dir_name, args.i)
-    delete_dir(os.path.join(dir_name, args.o))
+    # delete_dir(os.path.join(dir_name, args.o))
     output_dir = create_dir(dir_name, args.o)
 
     # Validate input and output paths.

@@ -7,9 +7,7 @@ from subprocess import run, check_output
 import nibabel as nib
 import SimpleITK as sitk
 import numpy as np
-from sklearn.model_selection import KFold
 
-from registration import calculate_metrics
 from utils import setup_parser, validate_paths, delete_dir, create_dir, ImageProperty
 
 
@@ -118,27 +116,47 @@ def resample(pair, spacing=None, size=None):
 def create_bounding_boxes(pair):
     # Convert to nifty and save the image.
     for study in pair:
-        liver = pair[study]["unet3d_liver"] if study == "CT" else pair[study]["liver"]
+        items = {}
+        if study == "CT":
+            items = {
+                "liver": pair[study]["liver"],
+                "unet3d_liver": pair[study]["unet3d_liver"]
+            }
 
-        # Load the mask and convert it into a numpy array.
-        mask_nii = nib.load(liver)
-        mask_data = np.array(mask_nii.get_fdata())
+            if "liver_from_mri" in pair[study]:
+                items.update({
+                    "liver_from_mri": pair[study]["liver_from_mri"]
+                })
+        elif study == "MRI":
+            items = {
+                "liver": pair[study]["liver"]
+            }
 
-        # Get the segmentation_good and find min and max for each axis.
-        segmentation = np.where(mask_data == 1)
-        x_min, x_max = int(np.min(segmentation[0])), int(np.max(segmentation[0]))
-        y_min, y_max = int(np.min(segmentation[1])), int(np.max(segmentation[1]))
-        z_min, z_max = int(np.min(segmentation[2])), int(np.max(segmentation[2]))
+            if "manual_reg_liver" in pair[study]:
+                items.update({
+                    "manual_reg_liver": pair[study]["manual_reg_liver"]
+                })
 
-        # Create new image and the bounding box mask.
-        bounding_box_mask = np.zeros(mask_data.shape)
-        bounding_box_mask[x_min:x_max, y_min:y_max, z_min:z_max] = 1
+        for item in items:
+            # Load the mask and convert it into a numpy array.
+            mask_nii = nib.load(items[item])
+            mask_data = np.array(mask_nii.get_fdata())
 
-        # Save bounding box.
-        split_path = liver.split(".")
-        bounding_box_mask = bounding_box_mask.astype(np.uint8)
-        bounding_box_nii = nib.Nifti1Image(bounding_box_mask, header=mask_nii.header, affine=mask_nii.affine)
-        nib.save(bounding_box_nii, f"{split_path[0]}_bb.{split_path[1]}.gz")
+            # Get the segmentation_good and find min and max for each axis.
+            segmentation = np.where(mask_data == 1)
+            x_min, x_max = int(np.min(segmentation[0])), int(np.max(segmentation[0]))
+            y_min, y_max = int(np.min(segmentation[1])), int(np.max(segmentation[1]))
+            z_min, z_max = int(np.min(segmentation[2])), int(np.max(segmentation[2]))
+
+            # Create new image and the bounding box mask.
+            bounding_box_mask = np.zeros(mask_data.shape)
+            bounding_box_mask[x_min:x_max, y_min:y_max, z_min:z_max] = 1
+
+            # Save bounding box.
+            split_path = items[item].split(".")
+            bounding_box_mask = bounding_box_mask.astype(np.uint8)
+            bounding_box_nii = nib.Nifti1Image(bounding_box_mask, header=mask_nii.header, affine=mask_nii.affine)
+            nib.save(bounding_box_nii, f"{split_path[0]}_bbox.nii.gz")
 
 
 # Align MRI images to the center of gravity of CT.
@@ -182,15 +200,16 @@ def min_max_normalization(image_paths):
 
 
 # The preprocessing pipeline for data use from the elastix software.
-def elastix_preprocessing(input_dir, output_dir):
-    for patient in os.listdir(output_dir):
-        patient_dir = os.path.join(output_dir, patient)
+def elastix_preprocessing(working_dir):
+    for patient in os.listdir(working_dir):
+        patient_dir = os.path.join(working_dir, patient)
 
+        unet3d_mask_path = os.path.join("./data", "nii_unet3d", "post_processed", f"{patient}.nii.gz")
         pair = {
             "CT": {
                 "volume": os.path.join(patient_dir, "spect_ct_volume.nii.gz"),
                 "liver": os.path.join(patient_dir, "spect_ct_liver.nii.gz"),
-                "unet3d_liver": os.path.join(patient_dir, "spect_ct_unet3d_liver.nii.gz"),
+                "unet3d_liver": copy(unet3d_mask_path, os.path.join(patient_dir, "spect_ct_unet3d_liver.nii.gz")),
             },
             "MRI": {
                 "volume": os.path.join(patient_dir, "mri_volume.nii.gz"),
@@ -204,9 +223,36 @@ def elastix_preprocessing(input_dir, output_dir):
                 "tumor": os.path.join(patient_dir, "spect_ct_tumor.nii.gz")
             })
 
+        # Add conditionally the tumor path, because some RTStructs might not contain tumor labels.
+        if os.path.exists(os.path.join(patient_dir, "spect_ct_liver_from_mri.nii.gz")):
+            pair["CT"].update({
+                "liver_from_mri": os.path.join(patient_dir, "spect_ct_liver_from_mri.nii.gz")
+            })
+
+        # Add conditionally the tumor path, because some RTStructs might not contain tumor labels.
+        if os.path.exists(os.path.join(patient_dir, "spect_ct_tumor_from_mri.nii.gz")):
+            pair["CT"].update({
+                "tumor_from_mri": os.path.join(patient_dir, "spect_ct_tumor_from_mri.nii.gz")
+            })
+
         if os.path.exists(os.path.join(patient_dir, "mri_tumor.nii.gz")):
             pair["MRI"].update({
                 "tumor": os.path.join(patient_dir, "mri_tumor.nii.gz")
+            })
+
+        if os.path.exists(os.path.join(patient_dir, "mri_manual_reg_volume.nii.gz")):
+            pair["MRI"].update({
+                "manual_reg_volume": os.path.join(patient_dir, "mri_manual_reg_volume.nii.gz")
+            })
+
+        if os.path.exists(os.path.join(patient_dir, "mri_manual_reg_liver.nii.gz")):
+            pair["MRI"].update({
+                "manual_reg_liver": os.path.join(patient_dir, "mri_manual_reg_liver.nii.gz")
+            })
+
+        if os.path.exists(os.path.join(patient_dir, "mri_manual_reg_tumor.nii.gz")):
+            pair["MRI"].update({
+                "manual_reg_tumor": os.path.join(patient_dir, "mri_manual_reg_tumor.nii.gz")
             })
 
         # Preprocessing for conventional registration usage.
@@ -264,9 +310,14 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=0):
         print(f"-Processing {patient}")
         patient_dir = create_dir(output_dir, patient)
 
-        ct_volume = os.path.join(input_dir, patient, "spect_ct_volume.nii.gz")
-        ct_gt_label = os.path.join(input_dir, patient, "spect_ct_liver.nii.gz")
-        ct_unet3d_label = os.path.join(input_dir, patient, "spect_ct_unet3d_liver.nii.gz")
+        spect_ct_volume = os.path.join(input_dir, patient, "spect_ct_volume.nii.gz")
+        spect_ct_gt_label = os.path.join(input_dir, patient, "spect_ct_liver.nii.gz")
+        spect_ct_unet3d_label = os.path.join(input_dir, patient, "spect_ct_unet3d_liver.nii.gz")
+        spect_ct_liver_from_mri = os.path.join(input_dir, patient, "spect_ct_liver_from_mri.nii.gz")
+        spect_ct_tumor = os.path.join(input_dir, patient, "spect_ct_tumor.nii.gz")
+        spect_ct_tumor_from_mri = os.path.join(input_dir, patient, "spect_ct_tumor_from_mri.nii.gz")
+        mri_manual_reg_liver = os.path.join(input_dir, patient, "mri_manual_reg_liver.nii.gz")
+        mri_manual_reg_tumor = os.path.join(input_dir, patient, "mri_manual_reg_tumor.nii.gz")
 
         if aligned_mri_dir:
             mri_volume = os.path.join(
@@ -281,15 +332,30 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=0):
 
         pair = {
             "CT": {
-                "volume": copy(ct_volume, os.path.join(patient_dir, "spect_ct_volume.nii.gz")),
-                "gt_liver": copy(ct_gt_label, os.path.join(patient_dir, "spect_ct_liver.nii.gz")),
-                "unet3d_liver": copy(ct_unet3d_label, os.path.join(patient_dir, "spect_ct_unet3d_liver.nii.gz"))
+                "volume": copy(spect_ct_volume, os.path.join(patient_dir, "spect_ct_volume.nii.gz")),
+                "liver": copy(spect_ct_gt_label, os.path.join(patient_dir, "spect_ct_liver.nii.gz")),
+                "unet3d_liver": copy(spect_ct_unet3d_label, os.path.join(patient_dir, "spect_ct_unet3d_liver.nii.gz"))
             },
             "MRI": {
                 "volume": copy(mri_volume, os.path.join(patient_dir, "mri_volume.nii.gz")),
                 "liver": copy(mri_label, os.path.join(patient_dir, "mri_liver.nii.gz"))
             }
         }
+
+        if os.path.exists(spect_ct_tumor):
+            copy(spect_ct_tumor, os.path.join(patient_dir, "spect_ct_tumor.nii.gz"))
+
+        if os.path.exists(spect_ct_liver_from_mri):
+            copy(spect_ct_liver_from_mri, os.path.join(patient_dir, "spect_ct_liver_from_mri.nii.gz"))
+
+        if os.path.exists(spect_ct_tumor_from_mri):
+            copy(spect_ct_tumor_from_mri, os.path.join(patient_dir, "spect_ct_tumor_from_mri.nii.gz"))
+
+        if os.path.exists(mri_manual_reg_liver):
+            copy(mri_manual_reg_liver, os.path.join(patient_dir, "mri_manual_reg_liver.nii.gz"))
+
+        if os.path.exists(mri_manual_reg_tumor):
+            copy(mri_manual_reg_tumor, os.path.join(patient_dir, "mri_manual_reg_tumor.nii.gz"))
 
         # Process the images.
         # print("\t-Resample images and labels...")
@@ -308,7 +374,7 @@ def main():
     input_dir = os.path.join(dir_name, args.i)
     output_dir = os.path.join(dir_name, args.o)
     preprocessing_type = args.t
-    aligned_mri_dir = os.path.join(dir_name, args.pd) if args.pd else None
+    aligned_mri_dir = int(args.pd)
 
     # Validate input and output paths.
     validate_paths(input_dir, output_dir)
@@ -316,7 +382,7 @@ def main():
     if preprocessing_type == "elx":
         # delete_dir(output_dir)
         copytree(input_dir, output_dir)
-        elastix_preprocessing(input_dir, output_dir)
+        elastix_preprocessing(output_dir)
     elif preprocessing_type == "dls":
         # delete_dir(output_dir)
         create_dir(dir_name, output_dir)

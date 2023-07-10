@@ -126,7 +126,7 @@ def main():
     pipeline_file = os.path.join(dir_name, args.pl)
     patient = args.p
     patient_input = os.path.join(input_dir, patient)
-    output_dir = create_dir(patient_input, args.o)
+    output_dir = create_dir(dir_name, args.o)
 
     # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
@@ -156,6 +156,7 @@ def main():
 
     # Delete pipeline directory if it already exists and create a new one.
     pipeline_output = create_dir(output_dir, pipeline["name"])
+    patient_out = create_dir(pipeline_output, patient)
 
     registration = None
     for step in pipeline["registration_steps"]:
@@ -169,7 +170,7 @@ def main():
         } if "masks" in step else None
 
         parameters_file, transform_name = os.path.join(dir_name, step["parameters"]), step["name"]
-        transform_output = create_dir(pipeline_output, transform_name)
+        transform_output = create_dir(patient_out, transform_name)
 
         # Perform the registration, which will return a transformation file. This transformation will be used in
         # the next registration step of the pipeline as initial transform "t0".
@@ -179,9 +180,6 @@ def main():
         # In case of failure to finish the registration process, continue to the next patient.
         if registration == -1:
             break
-
-        # If it's defined in the pipeline, apply the transform to the volume too. This is necessary for the cases
-        # where all the registrations are done only between masks and no volumes.
 
         # Apply the transformation on the moving images.
         print(f"\t-Apply transform.")

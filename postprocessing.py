@@ -81,42 +81,48 @@ def remove_redundant_areas(image: np.ndarray, for_which_classes: list, volume_pe
     return image, largest_removed, kept_size
 
 
-def postprocess_segmentations(input_dir, output_dir):
-    dice_list = []
-    masks = os.listdir(input_dir)
-    for mask in masks:
-        mask_path = os.path.join(input_dir, mask)
-        cast_to_type([mask_path], "uchar")
+def postprocess_segmentations(input_dir, output_dir, ref_dir):
+    results = {}
 
-        img_in = sitk.ReadImage(mask_path)
-        img_npy = sitk.GetArrayFromImage(img_in)
-        volume_per_voxel = float(np.prod(img_in.GetSpacing(), dtype=np.float64))
+    folds = os.listdir(input_dir)
+    for fold in folds:
+        if fold == "evaluation.json":
+            continue
 
-        image, largest_removed, kept_size = remove_redundant_areas(img_npy, [1], volume_per_voxel)
+        data_path = os.path.join(input_dir, fold, "validation_raw")
+        masks = os.listdir(data_path)
+        for mask in masks:
+            mask_path = os.path.join(data_path, mask)
+            cast_to_type([mask_path], "uchar")
 
-        img_out_itk = sitk.GetImageFromArray(image)
-        img_out_itk = copy_geometry(img_out_itk, img_in)
+            img_in = sitk.ReadImage(mask_path)
+            img_npy = sitk.GetArrayFromImage(img_in)
+            volume_per_voxel = float(np.prod(img_in.GetSpacing(), dtype=np.float64))
 
-        patient = mask.split(".")[0]
-        patient_output = os.path.join(output_dir, patient)
+            image, largest_removed, kept_size = remove_redundant_areas(img_npy, [1], volume_per_voxel)
 
-        img_path = os.path.join(patient_output, "spect_ct_unet3d_liver.nii.gz")
-        sitk.WriteImage(img_out_itk, img_path)
+            img_out_itk = sitk.GetImageFromArray(image)
+            img_out_itk = copy_geometry(img_out_itk, img_in)
 
-        like_img = os.path.join(patient_output, "spect_ct_volume.nii.gz")
-        run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img, "--interp=0"])
+            patient = mask.split(".")[0]
+            img_path = os.path.join(output_dir, f"{patient}.nii.gz")
+            sitk.WriteImage(img_out_itk, img_path)
 
-        ct_gt_label = os.path.join(patient_output, "spect_ct_liver.nii.gz")
-        results = {
-            "liver": {
-                "U-NET3D": calculate_metrics(ct_gt_label, img_path)
-            }
-        }
-        print(results)
-        with open(f"{patient_output}/unet3d_evaluation.json", "w") as fp:
-            json.dump(results, fp)
+            like_img = os.path.join(ref_dir, patient, "spect_ct_volume.nii.gz")
+            run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img, "--interp=0"])
 
-    return dice_list
+            ct_gt_label = os.path.join(ref_dir, patient, "spect_ct_liver.nii.gz")
+            results.update({
+                patient: {
+                    "liver": {
+                        "U-NET3D": calculate_metrics(ct_gt_label, img_path)
+                    }
+                }
+            })
+            print(patient, results[patient])
+
+    with open(f"{output_dir}/../unet3d_evaluation.json", "w") as fp:
+        json.dump(results, fp)
 
 
 # Resample images to 512x512x448 after deep learning registration.
@@ -159,10 +165,11 @@ def main():
     args = setup_parser("config/postprocessing_parser.json")
     input_dir = os.path.join(dir_name, args.i)
     output_dir = create_dir(dir_name, args.o)
+    ref_dir = os.path.join(dir_name, args.ref)
     postprocessing_type = args.t
 
     if postprocessing_type == "seg":
-        postprocess_segmentations(input_dir, output_dir)
+        postprocess_segmentations(input_dir, output_dir, ref_dir)
     elif postprocessing_type == "reg":
         postprocess_registrations(input_dir, output_dir)
 
