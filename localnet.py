@@ -56,21 +56,26 @@ def print_time_logs(timer):
 
 
 # Extract the images from the torches and save them.
-def save_prediction(prediction, output_dir):
+def save_prediction(prediction, input_dir, output_dir):
     patient = list(prediction.keys())[0]
     print(f"Saving predictions: {patient}")
 
     patient_dir = create_dir(output_dir, patient)
-    img_ref = sitk.ReadImage(f"./data/localnet/{patient}/spect_ct_volume.nii.gz")
+    ct_volume_ref = sitk.ReadImage(f"{input_dir}/{patient}/spect_ct_volume.nii.gz")
 
-    for item in ["volume", "liver", "ddf"]:
+    save_items = [
+        "spect_ct_liver", "spect_ct_tumor", "mri_volume_pred",
+        "mri_liver", "mri_tumor", "mri_liver_pred", "mri_tumor_pred",
+        "mri_ddf_pred"
+    ]
+    for item in save_items:
         image = prediction[patient][item].cpu().numpy()[0, 0]
         image = np.swapaxes(image, 0, 2)
         image = sitk.GetImageFromArray(image)
-        image.SetSpacing(img_ref.GetSpacing())
-        image.SetOrigin(img_ref.GetOrigin())
-        image.SetDirection(img_ref.GetDirection())
-        sitk.WriteImage(image, f"{patient_dir}/mri_{item}_pred.nii.gz")
+        image.SetSpacing(ct_volume_ref.GetSpacing())
+        image.SetOrigin(ct_volume_ref.GetOrigin())
+        image.SetDirection(ct_volume_ref.GetDirection())
+        sitk.WriteImage(image, f"{patient_dir}/{item}.nii.gz")
 
 
 # Preprocessing and data augmentation.
@@ -80,23 +85,27 @@ def transforms():
             LoadImaged(
                 keys=[
                     "fixed_image",
-                    "fixed_unet3d_label",
-                    "fixed_gt_label",
+                    "fixed_unet3d_liver_label",
+                    "fixed_liver_label",
+                    "fixed_tumor_label",
                     "moving_image",
-                    "moving_label"
+                    "moving_liver_label",
+                    "moving_tumor_label",
                 ],
                 ensure_channel_first=True
             ),
             Resized(
                 keys=[
                     "fixed_image",
-                    "fixed_unet3d_label",
-                    "fixed_gt_label",
+                    "fixed_unet3d_liver_label",
+                    "fixed_liver_label",
+                    "fixed_tumor_label",
                     "moving_image",
-                    "moving_label"
+                    "moving_liver_label",
+                    "moving_tumor_label",
                 ],
-                mode=("trilinear", "nearest", "nearest", "trilinear", "nearest"),
-                align_corners=(True, None, None, True, None),
+                mode=("trilinear", "nearest", "nearest", "nearest", "trilinear", "nearest", "nearest"),
+                align_corners=(True, None, None, None, True, None, None),
                 spatial_size=(256, 256, 224),
             ),
         ]
@@ -107,18 +116,20 @@ def transforms():
 def forward(sample, model, warp_layer, inference=False):
     x_fixed = sample["fixed_image"].to(DEVICE)
     x_moving = sample["moving_image"].to(DEVICE)
-    y_moving = sample["moving_label"].to(DEVICE)
+    liver_moving = sample["moving_liver_label"].to(DEVICE)
 
     # Predict DDF from fixed and moving images
     ddf = model(torch.cat((x_fixed, x_moving), dim=1))
 
     if inference:
+        tumor_moving = sample["moving_liver_label"].to(DEVICE)
         x_pred = warp_layer["linear"](x_moving, ddf)
-        y_pred = warp_layer["binary"](y_moving, ddf)
-        return ddf, x_pred, y_pred
+        liver_pred = warp_layer["binary"](liver_moving, ddf)
+        tumor_pred = warp_layer["binary"](tumor_moving, ddf)
+        return ddf, x_pred, liver_pred, tumor_pred
     else:
-        y_pred_ln = warp_layer["linear"](y_moving, ddf)
-        y_pred_bn = warp_layer["binary"](y_moving, ddf)
+        y_pred_ln = warp_layer["linear"](liver_moving, ddf)
+        y_pred_bn = warp_layer["binary"](liver_moving, ddf)
         return ddf, y_pred_ln, y_pred_bn
 
 
@@ -137,14 +148,14 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer,
 
         # Predict DDF and moving label.
         ddf, y_pred_ln, y_pred_bn = forward(batch_data, model, warp_layer)
-        fixed_unet3d_label = batch_data["fixed_unet3d_label"].to(DEVICE)
+        fixed_unet3d_liver_label = batch_data["fixed_unet3d_liver_label"].to(DEVICE)
         y_pred_ln[y_pred_ln > 1] = 1
         fwd_calc = time()
 
         optimizer.zero_grad()
 
         # Calculate loss and backpropagation.
-        train_loss = criterion(y_pred_ln, fixed_unet3d_label) + (0.5 * regularization(ddf))
+        train_loss = criterion(y_pred_ln, fixed_unet3d_liver_label) + (0.5 * regularization(ddf))
         loss_calc = time()
         train_loss.backward()
         optimizer.step()
@@ -152,8 +163,8 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer,
         back_calc = time()
 
         # Calculate dice accuracy.
-        fixed_gt_label = batch_data["fixed_gt_label"].to(DEVICE)
-        dice_metric(y_pred=y_pred_bn, y=fixed_gt_label)
+        fixed_liver_label = batch_data["fixed_liver_label"].to(DEVICE)
+        dice_metric(y_pred=y_pred_bn, y=fixed_liver_label)
         dice_calc = time()
 
         # Setup timer logs.
@@ -190,18 +201,18 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
 
             # Predict DDF and moving label.
             ddf, y_pred_ln, y_pred_bn = forward(val_data, model, warp_layer)
-            fixed_unet3d_label = val_data["fixed_unet3d_label"].to(DEVICE)
+            fixed_unet3d_liver_label = val_data["fixed_unet3d_liver_label"].to(DEVICE)
             y_pred_ln[y_pred_ln > 1] = 1
             fwd_calc = time()
 
             # Calculate loss.
-            val_loss = criterion(y_pred_ln, fixed_unet3d_label) + (0.5 * regularization(ddf))
+            val_loss = criterion(y_pred_ln, fixed_unet3d_liver_label) + (0.5 * regularization(ddf))
             total_val_loss += val_loss.item()
             loss_calc = time()
 
             # Calculate dice accuracy.
-            fixed_gt_label = val_data["fixed_gt_label"].to(DEVICE)
-            dice_metric(y_pred=y_pred_bn, y=fixed_gt_label)
+            fixed_liver_label = val_data["fixed_liver_label"].to(DEVICE)
+            dice_metric(y_pred=y_pred_bn, y=fixed_liver_label)
             dice_calc = time()
 
             timer["Loading"] += load_time - start_time
@@ -217,11 +228,9 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
 
     print_time_logs(timer)
 
-    return total_val_loss, dice_avg
-
 
 # Inference the model.
-def inference_model(model, test_loader, warp_layer, output_dir):
+def inference_model(model, test_loader, warp_layer, input_dir, output_dir):
     model.eval()
 
     print("Inferencing data...")
@@ -232,7 +241,7 @@ def inference_model(model, test_loader, warp_layer, output_dir):
             start_time = time()
 
             # Predict moving image and moving label.
-            ddf, x_pred, y_pred = forward(test_data, model, warp_layer, inference=True)
+            ddf, x_pred, liver_pred, tumor_pred = forward(test_data, model, warp_layer, inference=True)
 
             inference_time = time() - start_time
             total_inference_time += inference_time
@@ -240,11 +249,16 @@ def inference_model(model, test_loader, warp_layer, output_dir):
 
             save_prediction({
                 test_data["patient"][0]: {
-                    "volume": x_pred,
-                    "liver": y_pred,
-                    "ddf": ddf
+                    "spect_ct_liver": test_data["fixed_liver_label"].to(DEVICE),
+                    "spect_ct_tumor": test_data["fixed_tumor_label"].to(DEVICE),
+                    "mri_volume_pred": x_pred,
+                    "mri_liver": test_data["moving_liver_label"].to(DEVICE),
+                    "mri_liver_pred": liver_pred,
+                    "mri_tumor": test_data["moving_tumor_label"].to(DEVICE),
+                    "mri_tumor_pred": tumor_pred,
+                    "mri_ddf_pred": ddf
                 }
-            }, output_dir)
+            }, input_dir, output_dir)
 
         avg_inference_time = total_inference_time / len(test_loader)
         print(f"Average inference time: {round(avg_inference_time, 2)} sec.")
@@ -260,7 +274,7 @@ def main():
 
     # Validate paths, create structure and open the dataframe.
     validate_paths(input_dir, output_dir)
-    create_dir(dir_name, output_dir)
+    output_dir = create_dir(dir_name, output_dir)
 
     # Initialize the model.
     model_dir = create_dir(output_dir, model_name)
@@ -272,10 +286,12 @@ def main():
     data = [
         {
             "fixed_image": os.path.join(input_dir, str(patient), "spect_ct_volume.nii.gz"),
-            "fixed_unet3d_label": os.path.join(input_dir, str(patient), "spect_ct_unet3d_liver.nii.gz"),
-            "fixed_gt_label": os.path.join(input_dir, str(patient), "spect_ct_liver.nii.gz"),
+            "fixed_unet3d_liver_label": os.path.join(input_dir, str(patient), "spect_ct_unet3d_liver.nii.gz"),
+            "fixed_liver_label": os.path.join(input_dir, str(patient), "spect_ct_liver.nii.gz"),
+            "fixed_tumor_label": os.path.join(input_dir, str(patient), "spect_ct_tumor.nii.gz"),
             "moving_image": os.path.join(input_dir, str(patient), "mri_volume.nii.gz"),
-            "moving_label": os.path.join(input_dir, str(patient), "mri_liver.nii.gz"),
+            "moving_liver_label": os.path.join(input_dir, str(patient), "mri_liver.nii.gz"),
+            "moving_tumor_label": os.path.join(input_dir, str(patient), "mri_tumor.nii.gz"),
             "patient": patient
         }
         for patient in os.listdir(input_dir)
@@ -376,31 +392,40 @@ def main():
     wandb.finish()
 
     # Load saved model.
+    # Load saved model.
     model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
 
     # Inference the testing data and save the predictions.
     fold_data_output = create_dir(model_dir, f"fold_{fold}_raw")
-    inference_model(model, test_loader, warp_layer, fold_data_output)
+    inference_model(model, test_loader, warp_layer, input_dir, fold_data_output)
 
     # Calculate metrics.
     patient_list = [item["patient"] for item in test_files]
     for patient in patient_list:
-        patient_dir = os.path.join(input_dir, patient)
-        ct_gt_liver = os.path.join(patient_dir, "spect_ct_liver.nii.gz")
-        mri_liver = os.path.join(patient_dir, "mri_liver.nii.gz")
-        mri_liver_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
+        patient_dir = os.path.join(fold_data_output, patient)
+        spect_ct_liver = os.path.join(str(patient_dir), "spect_ct_liver.nii.gz")
+        spect_ct_tumor = os.path.join(str(patient_dir), "spect_ct_tumor.nii.gz")
+        mri_liver = os.path.join(str(patient_dir), "mri_liver.nii.gz")
+        mri_liver_pred = os.path.join(str(patient_dir), "mri_liver_pred.nii.gz")
+        mri_tumor = os.path.join(str(patient_dir), "mri_tumor.nii.gz")
+        mri_tumor_pred = os.path.join(str(patient_dir), "mri_tumor_pred.nii.gz")
 
         results = {
             "liver": {
-                "Initial": calculate_metrics(ct_gt_liver, mri_liver),
-                "LocalNet": calculate_metrics(ct_gt_liver, mri_liver_pred)
+                "Initial": calculate_metrics(spect_ct_liver, mri_liver),
+                "LocalNet": calculate_metrics(spect_ct_liver, mri_liver_pred)
+            },
+            "tumor": {
+                "Initial": calculate_metrics(spect_ct_tumor, mri_tumor),
+                "LocalNet": calculate_metrics(spect_ct_tumor, mri_tumor_pred)
             }
         }
 
         with open(f"{patient_dir}/evaluation.json", "w") as fp:
             json.dump(results, fp)
 
-        print(f"Patient {patient} Dice: {results['liver']['Initial']} ---> {results['liver']['LocalNet']}")
+        print(f"Patient {patient} Liver Dice: {results['liver']['Initial']} ---> {results['liver']['LocalNet']}")
+        print(f"Patient {patient} Liver Dice: {results['tumor']['Initial']} ---> {results['tumor']['LocalNet']}\n")
 
 
 # Use this file as a script and run it.
