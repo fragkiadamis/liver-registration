@@ -7,35 +7,32 @@ from matplotlib import pyplot as plt
 from utils import setup_parser, validate_paths, create_dir
 
 
-def box_plots(data, output_dir, column, temp=None):
+def box_plots(data, output_dir):
     output = create_dir(output_dir, "boxplots")
 
     # Calculate mean and median
-    mean = np.mean(data)
-    mean2 = np.mean(temp)
-    median = np.median(data)
-    median2 = np.median(temp)
+    mean = np.mean(data[0])
+    mean2 = np.mean(data[1])
+    mean3 = np.mean(data[2])
+    median = np.median(data[0])
+    median2 = np.median(data[1])
+    median3 = np.median(data[2])
 
     # Create box plots
     fig, ax = plt.subplots()
-    if temp is not None:
-        ax.boxplot([temp, data], vert=True, showmeans=True, meanline=True, labels=['B-Spline', 'LocalNet'])
-    else:
-        ax.boxplot(data, vert=False, showmeans=True, meanline=True, labels=['Data'])
-
-    # Add mean and median markers
-    ax.scatter([2, 1], [mean, mean2], color='red', marker='o', label='Mean')
-    ax.scatter([2, 1], [median, median2], color='blue', marker='o', label='Median')
+    ax.boxplot([data[0], data[1], data[2]], vert=True, showmeans=True, meanline=True, labels=['B-Spline', 'Expert', 'LocalNet'])
+    ax.scatter([1, 2, 3], [mean, mean2, mean3], color='red', marker='o', label='Mean')
+    ax.scatter([1, 2, 3], [median, median2, median3], color='blue', marker='o', label='Median')
 
     # Set plot title and labels
-    ax.set_title('LocalNet Box Plot')
+    ax.set_title('Results Box Plot')
     ax.set_xlabel('Value')
 
     # Show legend
     ax.legend()
 
     # Save the plot as a PNG image
-    filename = f"box_plot_{column}.png"
+    filename = f"box_plot.png"
     plt.savefig(f"{output}/{filename}", dpi=300, bbox_inches='tight')
 
 
@@ -95,24 +92,45 @@ def main():
     dataframe.rename(
         columns={
             'Unnamed: 0': 'patients',
-            'Initial': 'initial_dice',
-            'Unnamed: 2': 'initial_hd',
-            '01_Affine_KS': 'affine_dice',
-            'Unnamed: 4': 'affine_hd',
-            '02_B-Spline_MI': 'bspline_dice',
-            'Unnamed: 6': 'bspline_hd',
-            '02_LocalNet (256)': 'localnet_256_dice',
-            'Unnamed: 8': 'localnet_256_hd',
-            '02_LocalNet (RS 512)': 'localnet_512_dice',
-            'Unnamed: 10': 'localnet_512_hd'
+            'Initial': 'liver_initial_dice',
+            'Unnamed: 2': 'liver_initial_hd',
+            'Unnamed: 3': 'tumor_initial_dice',
+            'Unnamed: 4': 'tumor_initial_hd',
+            'Unnamed: 5': 'tumor_bb_initial_dice',
+            'Unnamed: 6': 'tumor_bb_initial_hd',
+            'Affine': 'liver_affine_dice',
+            'Unnamed: 8': 'liver_affine_hd',
+            'Unnamed: 9': 'tumor_affine_dice',
+            'Unnamed: 10': 'tumor_affine_hd',
+            'Unnamed: 11': 'tumor_bb_affine_dice',
+            'Unnamed: 12': 'tumor_bb_affine_hd',
+            'B-Spline': 'liver_bspline_dice',
+            'Unnamed: 14': 'liver_bspline_hd',
+            'Unnamed: 15': 'tumor_bspline_dice',
+            'Unnamed: 16': 'tumor_bspline_hd',
+            'Unnamed: 17': 'tumor_bb_bspline_dice',
+            'Unnamed: 18': 'tumor_bb_bspline_hd',
+            'LocalNet': 'liver_localnet_dice',
+            'Unnamed: 20': 'liver_localnet_hd',
+            'Unnamed: 21': 'tumor_localnet_dice',
+            'Unnamed: 22': 'tumor_localnet_hd',
+            'Unnamed: 23': 'tumor_bb_localnet_dice',
+            'Unnamed: 24': 'tumor_bb_localnet_hd',
+            "Expert": 'liver_expert_dice',
+            'Unnamed: 26': 'liver_expert_hd',
+            'Unnamed: 27': 'tumor_expert_dice',
+            'Unnamed: 28': 'tumor_expert_hd',
+            'Unnamed: 29': 'tumor_bb_expert_dice',
+            'Unnamed: 30': 'tumor_bb_expert_hd'
         },
         inplace=True
     )
+    box_plots([dataframe['tumor_bspline_dice'], dataframe['tumor_expert_dice'], dataframe['tumor_localnet_dice']], output_dir)
     for column in dataframe:
         if "patient" in column:
             continue
+        print(column)
 
-        box_plots(dataframe[column], output_dir, column, temp=dataframe['bspline_dice'])
         # plot_distribution(dataframe[column], output_dir, column)
         # plot_std(dataframe[column], output_dir, column)
 
