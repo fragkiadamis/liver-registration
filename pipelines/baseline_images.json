@@ -9,8 +9,8 @@
       "parameters": "parameters/Affine_MI.txt",
       "def_field": 0,
       "result": "mri_liver_reg",
-      "apply_on": ["mri_liver.nii.gz"]
+      "apply_on": ["mri_liver.nii.gz", "mri_tumor.nii.gz", "mri_tumor_bbox.nii.gz"]
     }
   ],
-  "evaluate": ["liver"]
+  "evaluate": ["liver", "tumor", "tumor_bbox"]
 }

@@ -140,12 +140,16 @@ def main():
     print(f"-Registering patient: {ConsoleColors.OK_BLUE}{patient}.{ConsoleColors.END}")
 
     results, evaluation_masks = {}, {}
-    evaluation_masks.update({
-        img: {
-            "fixed": os.path.join(patient_input, f"{pipeline['studies']['fixed']}_{img}.nii.gz"),
-            "moving": os.path.join(patient_input, f"{pipeline['studies']['moving']}_{img}.nii.gz")
-        } for img in pipeline["evaluate"]
-    })
+    for img in pipeline["evaluate"]:
+        fixed_path = os.path.join(patient_input, f"{pipeline['studies']['fixed']}_{img}.nii.gz")
+        moving_path = os.path.join(patient_input, f"{pipeline['studies']['moving']}_{img}.nii.gz")
+        if os.path.exists(fixed_path) and os.path.exists(moving_path):
+            evaluation_masks.update({
+                img: {
+                    "fixed": fixed_path,
+                    "moving": moving_path
+                }
+            })
 
     print(f"\t-Calculating Metrics.")
     for mask in evaluation_masks:
@@ -195,7 +199,7 @@ def main():
             })
             print(f"\t\t-{mask}: {results[mask]}.")
 
-    with open(f"{pipeline_output}/evaluation.json", "w") as fp:
+    with open(f"{patient_out}/evaluation.json", "w") as fp:
         json.dump(results, fp)
 
 

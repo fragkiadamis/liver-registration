@@ -312,13 +312,13 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=0):
 
         if aligned_mri_dir:
             mri_volume = os.path.join(
-                input_dir, patient, "results", "baseline_unet3d_masks", "01_Affine_KS", "mri_volume_reg.nii.gz"
+                "./data/results/elastix/baseline_unet3d_masks", patient, "01_Affine_KS", "mri_volume_reg.nii.gz"
             )
             mri_liver = os.path.join(
-                input_dir, patient, "results", "baseline_unet3d_masks", "01_Affine_KS", "mri_liver_reg.nii.gz"
+                "./data/results/elastix/baseline_unet3d_masks", patient, "01_Affine_KS", "mri_liver_reg.nii.gz"
             )
             mri_tumor = os.path.join(
-                input_dir, patient, "results", "baseline_unet3d_masks", "01_Affine_KS", "mri_tumor_reg.nii.gz"
+                "./data/results/elastix/baseline_unet3d_masks", patient, "01_Affine_KS", "mri_tumor_reg.nii.gz"
             )
         else:
             mri_volume = os.path.join(input_dir, patient, "mri_volume.nii.gz")

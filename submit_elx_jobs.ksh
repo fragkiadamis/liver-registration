@@ -24,7 +24,7 @@ do
         echo "#$ -o ${PROJECT_DIR}/logs/elx_registration.out"
         echo "#$ -N p$PATIENT_ID"
         echo "source ${VENV}"
-        echo "python ${PROJECT_DIR}/registration.py -i ${INPUT_DIR} -o results -p ${PATIENT} -pl ${PIPELINE}"
+        echo "python ${PROJECT_DIR}/registration.py -i ${INPUT_DIR} -o data/results/elastix -p ${PATIENT} -pl ${PIPELINE}"
     } >> reg_job.ksh
 
     # Submit the file in the queue and delete it after
