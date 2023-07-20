@@ -2,8 +2,7 @@
   "description": "Initialize an excel file for the results.",
   "arguments": {
     "required": {
-      "-i": "Path to the directory containing the post-registration patients.",
-      "-pl": "The pipeline that this file will concern."
+      "-i": "Path to the directory containing the post-registration patients."
     },
     "optional": {
     }

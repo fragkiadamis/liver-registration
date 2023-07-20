@@ -71,15 +71,14 @@ def main():
     dir_name = os.path.dirname(__file__)
     args = setup_parser(f"{dir_name}/config/excel_parser.json")
     input_dir = os.path.join(dir_name, args.i)
-    pipeline = args.pl
 
     df = None
-    results_path = f"results/{pipeline}.xlsx"
+    results_path = f"./data/results/spreadsheets/baseline_unet3d_masks.xlsx"
 
     patients = os.listdir(input_dir)
     for patient in patients:
         patient_dir = os.path.join(input_dir, patient)
-        evaluation_path = os.path.join(patient_dir, "results", pipeline, "evaluation.json")
+        evaluation_path = os.path.join(patient_dir, "evaluation.json")
 
         if os.path.exists(evaluation_path):
             pf = open(evaluation_path)

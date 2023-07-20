@@ -12,5 +12,5 @@
       "apply_on": ["mri_liver.nii.gz", "mri_tumor.nii.gz", "mri_tumor_bbox.nii.gz"]
     }
   ],
-  "evaluate": ["liver", "tumor", "tumor_bbox"]
+  "evaluate": ["liver", "tumor"]
 }
