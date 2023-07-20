@@ -39,7 +39,7 @@ def init_wandb(fold):
     wandb.init(
         project="liver-registration",
         name=f"fold_{fold}",
-        tags=["localnet", "registration"],
+        tags=["localnet", "registration", "tumor_included_loss"],
         config={
             "architecture": ARCHITECTURE,
             "epochs": NUM_EPOCHS,
@@ -85,24 +85,24 @@ def transforms():
             LoadImaged(
                 keys=[
                     "fixed_image",
-                    "fixed_unet3d_liver_label",
-                    "fixed_liver_label",
-                    "fixed_tumor_label",
+                    "fixed_unet3d_liver",
+                    "fixed_liver",
+                    "fixed_tumor",
                     "moving_image",
-                    "moving_liver_label",
-                    "moving_tumor_label",
+                    "moving_liver",
+                    "moving_tumor",
                 ],
                 ensure_channel_first=True
             ),
             Resized(
                 keys=[
                     "fixed_image",
-                    "fixed_unet3d_liver_label",
-                    "fixed_liver_label",
-                    "fixed_tumor_label",
+                    "fixed_unet3d_liver",
+                    "fixed_liver",
+                    "fixed_tumor",
                     "moving_image",
-                    "moving_liver_label",
-                    "moving_tumor_label",
+                    "moving_liver",
+                    "moving_tumor",
                 ],
                 mode=("trilinear", "nearest", "nearest", "nearest", "trilinear", "nearest", "nearest"),
                 align_corners=(True, None, None, None, True, None, None),
@@ -116,21 +116,22 @@ def transforms():
 def forward(sample, model, warp_layer, inference=False):
     x_fixed = sample["fixed_image"].to(DEVICE)
     x_moving = sample["moving_image"].to(DEVICE)
-    liver_moving = sample["moving_liver_label"].to(DEVICE)
+    liver_moving = sample["moving_liver"].to(DEVICE)
+    tumor_moving = sample["moving_liver"].to(DEVICE)
 
     # Predict DDF from fixed and moving images
     ddf = model(torch.cat((x_fixed, x_moving), dim=1))
 
     if inference:
-        tumor_moving = sample["moving_liver_label"].to(DEVICE)
         x_pred = warp_layer["linear"](x_moving, ddf)
         liver_pred = warp_layer["binary"](liver_moving, ddf)
         tumor_pred = warp_layer["binary"](tumor_moving, ddf)
         return ddf, x_pred, liver_pred, tumor_pred
     else:
-        y_pred_ln = warp_layer["linear"](liver_moving, ddf)
-        y_pred_bn = warp_layer["binary"](liver_moving, ddf)
-        return ddf, y_pred_ln, y_pred_bn
+        liver_pred_ln = warp_layer["linear"](liver_moving, ddf)
+        liver_pred = warp_layer["binary"](liver_moving, ddf)
+        tumor_pred = warp_layer["binary"](tumor_moving, ddf)
+        return ddf, liver_pred_ln, liver_pred, tumor_pred
 
 
 # Train the model.
@@ -143,19 +144,22 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer,
     timer = {"Loading": 0, "Forward": 0, "Loss": 0, "Backpropagation": 0, "Dice": 0}
 
     # loop over the training set.
+    dice_liver, dice_tumor = dice_metric, dice_metric
     for batch_data in train_loader:
         load_time = time()
 
         # Predict DDF and moving label.
-        ddf, y_pred_ln, y_pred_bn = forward(batch_data, model, warp_layer)
-        fixed_unet3d_liver_label = batch_data["fixed_unet3d_liver_label"].to(DEVICE)
-        y_pred_ln[y_pred_ln > 1] = 1
+        ddf, liver_pred_ln, liver_pred, tumor_pred = forward(batch_data, model, warp_layer)
+        fixed_unet3d_liver = batch_data["fixed_unet3d_liver"].to(DEVICE)
+        fixed_liver = batch_data["fixed_liver"].to(DEVICE)
+        fixed_tumor = batch_data["fixed_tumor"].to(DEVICE)
+        liver_pred_ln[liver_pred_ln > 1] = 1
         fwd_calc = time()
 
         optimizer.zero_grad()
 
         # Calculate loss and backpropagation.
-        train_loss = criterion(y_pred_ln, fixed_unet3d_liver_label) + (0.5 * regularization(ddf))
+        train_loss = criterion(liver_pred_ln, fixed_unet3d_liver) + (0.5 * regularization(ddf))
         loss_calc = time()
         train_loss.backward()
         optimizer.step()
@@ -163,8 +167,8 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer,
         back_calc = time()
 
         # Calculate dice accuracy.
-        fixed_liver_label = batch_data["fixed_liver_label"].to(DEVICE)
-        dice_metric(y_pred=y_pred_bn, y=fixed_liver_label)
+        dice_liver(y_pred=liver_pred, y=fixed_liver)
+        dice_tumor(y_pred=tumor_pred, y=fixed_tumor)
         dice_calc = time()
 
         # Setup timer logs.
@@ -177,12 +181,14 @@ def train(model, train_loader, criterion, regularization, optimizer, warp_layer,
         start_time = time()
 
     # Aggregate dice results.
-    dice_avg = dice_metric.aggregate().item()
-    dice_metric.reset()
+    dice_liver_avg = dice_liver.aggregate().item()
+    dice_tumor_avg = dice_tumor.aggregate().item()
+    dice_liver.reset()
+    dice_tumor.reset()
 
     print_time_logs(timer)
 
-    return total_train_loss, dice_avg
+    return total_train_loss, [dice_liver_avg, dice_tumor_avg]
 
 
 # Validate the model.
@@ -196,23 +202,26 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
 
     # Loop over the validation set.
     with torch.no_grad():
+        dice_liver, dice_tumor = dice_metric, dice_metric
         for val_data in val_loader:
             load_time = time()
 
             # Predict DDF and moving label.
-            ddf, y_pred_ln, y_pred_bn = forward(val_data, model, warp_layer)
-            fixed_unet3d_liver_label = val_data["fixed_unet3d_liver_label"].to(DEVICE)
-            y_pred_ln[y_pred_ln > 1] = 1
+            ddf, liver_pred_ln, liver_pred, tumor_pred = forward(val_data, model, warp_layer)
+            fixed_unet3d_liver = val_data["fixed_unet3d_liver"].to(DEVICE)
+            fixed_liver = val_data["fixed_liver"].to(DEVICE)
+            fixed_tumor = val_data["fixed_tumor"].to(DEVICE)
+            liver_pred_ln[liver_pred_ln > 1] = 1
             fwd_calc = time()
 
             # Calculate loss.
-            val_loss = criterion(y_pred_ln, fixed_unet3d_liver_label) + (0.5 * regularization(ddf))
+            val_loss = criterion(liver_pred_ln, fixed_unet3d_liver) + (0.5 * regularization(ddf))
             total_val_loss += val_loss.item()
             loss_calc = time()
 
             # Calculate dice accuracy.
-            fixed_liver_label = val_data["fixed_liver_label"].to(DEVICE)
-            dice_metric(y_pred=y_pred_bn, y=fixed_liver_label)
+            dice_liver(y_pred=liver_pred, y=fixed_liver)
+            dice_tumor(y_pred=tumor_pred, y=fixed_tumor)
             dice_calc = time()
 
             timer["Loading"] += load_time - start_time
@@ -223,10 +232,14 @@ def validate(model, val_loader, criterion, regularization, warp_layer, dice_metr
             start_time = time()
 
         # Aggregate dice results.
-        dice_avg = dice_metric.aggregate().item()
-        dice_metric.reset()
+        dice_liver_avg = dice_liver.aggregate().item()
+        dice_tumor_avg = dice_tumor.aggregate().item()
+        dice_liver.reset()
+        dice_tumor.reset()
 
     print_time_logs(timer)
+
+    return total_val_loss, [dice_liver_avg, dice_tumor_avg]
 
 
 # Inference the model.
@@ -249,12 +262,12 @@ def inference_model(model, test_loader, warp_layer, input_dir, output_dir):
 
             save_prediction({
                 test_data["patient"][0]: {
-                    "spect_ct_liver": test_data["fixed_liver_label"].to(DEVICE),
-                    "spect_ct_tumor": test_data["fixed_tumor_label"].to(DEVICE),
+                    "spect_ct_liver": test_data["fixed_liver"].to(DEVICE),
+                    "spect_ct_tumor": test_data["fixed_tumor"].to(DEVICE),
                     "mri_volume_pred": x_pred,
-                    "mri_liver": test_data["moving_liver_label"].to(DEVICE),
+                    "mri_liver": test_data["moving_liver"].to(DEVICE),
                     "mri_liver_pred": liver_pred,
-                    "mri_tumor": test_data["moving_tumor_label"].to(DEVICE),
+                    "mri_tumor": test_data["moving_tumor"].to(DEVICE),
                     "mri_tumor_pred": tumor_pred,
                     "mri_ddf_pred": ddf
                 }
@@ -286,12 +299,12 @@ def main():
     data = [
         {
             "fixed_image": os.path.join(input_dir, str(patient), "spect_ct_volume.nii.gz"),
-            "fixed_unet3d_liver_label": os.path.join(input_dir, str(patient), "spect_ct_unet3d_liver.nii.gz"),
-            "fixed_liver_label": os.path.join(input_dir, str(patient), "spect_ct_liver.nii.gz"),
-            "fixed_tumor_label": os.path.join(input_dir, str(patient), "spect_ct_tumor.nii.gz"),
+            "fixed_unet3d_liver": os.path.join(input_dir, str(patient), "spect_ct_unet3d_liver.nii.gz"),
+            "fixed_liver": os.path.join(input_dir, str(patient), "spect_ct_liver.nii.gz"),
+            "fixed_tumor": os.path.join(input_dir, str(patient), "spect_ct_tumor.nii.gz"),
             "moving_image": os.path.join(input_dir, str(patient), "mri_volume.nii.gz"),
-            "moving_liver_label": os.path.join(input_dir, str(patient), "mri_liver.nii.gz"),
-            "moving_tumor_label": os.path.join(input_dir, str(patient), "mri_tumor.nii.gz"),
+            "moving_liver": os.path.join(input_dir, str(patient), "mri_liver.nii.gz"),
+            "moving_tumor": os.path.join(input_dir, str(patient), "mri_tumor.nii.gz"),
             "patient": patient
         }
         for patient in os.listdir(input_dir)
@@ -348,9 +361,7 @@ def main():
     optimizer = Adam(model.parameters(), lr=INIT_LR)
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
-    dice_values = []
-    best_dice = 0
-
+    best_liver_dice = 0
     start_time = time()
     for e in tqdm(range(NUM_EPOCHS)):
         epoch_start_time = time()
@@ -375,23 +386,22 @@ def main():
         print(f"[INFO] Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
         wandb.log({
             "train_loss": avg_train_loss, "val_loss": avg_val_loss,
-            "val_dice_accuracy": val_dice_avg, "train_dice_accuracy": train_dice_avg
+            "val_liver_dice": val_dice_avg[0], "train_liver_dice": train_dice_avg[0],
+            "val_tumor_dice": val_dice_avg[1], "train_tumor_dice": train_dice_avg[1]
         }, step=e + 1)
 
         # Follow the epoch with the best dice and save the respective weights.
-        dice_values.append(val_dice_avg)
-        if val_dice_avg > best_dice:
-            best_dice = val_dice_avg
+        if val_dice_avg[0] > best_liver_dice:
+            best_liver_dice = val_dice_avg[0]
             torch.save(model.state_dict(), f"{model_dir}/fold_{fold}_best_model.pth")
             print(f"[INFO] saved model in epoch {e + 1} as new best model.")
 
-        wandb.log({"best_dice": best_dice}, step=e + 1)
+        wandb.log({"best_liver_dice": best_liver_dice}, step=e + 1)
         print(f"[INFO] Epoch time: {round((time() - epoch_start_time) / 60, 2)} minutes")
 
     print(f"\n[INFO] total time taken to train the model: {round(((time() - start_time) / 60) / 60, 2)} hours")
     wandb.finish()
 
-    # Load saved model.
     # Load saved model.
     model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
 

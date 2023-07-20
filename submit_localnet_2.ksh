@@ -9,6 +9,6 @@ echo "Submitting deep learning registration."
 PROJECT_DIR="${WORKDIR}/liver-baseline-registration"
 
 module load "pytorch/1.11.0/cuda/11.3.1/gpu"
-python ${PROJECT_DIR}/localnet.py -i data/localnet -f 2 -o data/results -n localnet
+python ${PROJECT_DIR}/localnet.py -i data/nii_localnet -f 2 -o data/results -n localnet
 
 echo "Job submitted."

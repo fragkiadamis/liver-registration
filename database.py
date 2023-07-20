@@ -95,7 +95,7 @@ def fix_filenames(patient_dir, extracted_files, modality, volume_path):
 
     # Delete necrosis related files (not necessary).
     [
-        (print(f"\t\t\t-Deleting file: {file}", -1), os.remove(os.path.join(patient_dir, file)))
+        (print(f"\t\t\t-Deleting file: {file}"), os.remove(os.path.join(patient_dir, file)))
         for file in extracted_files if "necrosis" in file.lower()
     ]
 
@@ -111,35 +111,39 @@ def fix_filenames(patient_dir, extracted_files, modality, volume_path):
     # Fix the liver filenames, distinguish between the liver and the registered mri contours.
     for file in liver_files:
         if "ct" in modality and ("mri" in file.lower() or "irm" in file.lower()):
-            new_filename = "spect_ct_liver_from_mri.nii.gz"
+            print(f"\t\t\t-Deleting file: {file}")
+            os.remove(os.path.join(patient_dir, file))
         else:
-            new_filename = f"{modality}_liver.nii.gz"
-        print(f"\t\t\t-Renaming file: {file} ---> {new_filename}", 0)
-        rename_instance(patient_dir, file, new_filename)
+            liver_filename = f"{modality}_liver.nii.gz"
+            print(f"\t\t\t-Renaming file: {file} ---> {liver_filename}")
+            rename_instance(patient_dir, file, liver_filename)
 
-    # Separate MRI tumor and CT tumor delineations.
+    # Separate registered MRI tumors and CT tumor delineations.
     tumors_reg = [file for file in tumor_files if "ct" in modality and ("mri" in file.lower() or "irm" in file.lower())]
     tumors = [file for file in tumor_files if file not in tumors_reg]
 
-    if len(tumors_reg) > 0:
-        new_filename = "spect_ct_tumor_from_mri.nii.gz"
-        if len(tumors_reg) > 1:
-            print(f"\t\t\t-Adding the segmentations: {tumors_reg}", 1)
-            file = add_segmentations(tumors_reg, volume_path, patient_dir)
+    # Handle the tumor files.
+    def handle_tumors(tumor_list):
+        tumor_filename = f"{modality}_tumor.nii.gz"
+        if len(tumor_list) > 1:
+            print(f"\t\t\t-Adding the segmentations: {tumor_list}")
+            file = add_segmentations(tumor_list, volume_path, patient_dir)
         else:
-            file = tumors_reg[0]
-        print(f"\t\t\t-Renaming file: {file} ---> {new_filename}", 2)
-        rename_instance(patient_dir, file, new_filename)
+            file = tumor_list[0]
+        print(f"\t\t\t-Renaming file: {file} ---> {tumor_filename}")
+        rename_instance(patient_dir, file, tumor_filename)
 
+    # Handle CT tumor delineations.
     if len(tumors) > 0:
-        new_filename = f"{modality}_tumor.nii.gz"
-        if len(tumors) > 1:
-            print(f"\t\t\t-Adding the segmentations: {tumors}", 3)
-            file = add_segmentations(tumors, volume_path, patient_dir)
-        else:
-            file = tumors[0]
-        print(f"\t\t\t-Renaming file: {file} ---> {new_filename}", 4)
-        rename_instance(patient_dir, file, new_filename)
+        # If there are available tumor delineations of the modality delete the registered from the MRI.
+        for tumor_file in tumors_reg:
+            print(f"\t\t\t-Deleting file: {tumor_file}")
+            os.remove(os.path.join(patient_dir, tumor_file))
+        handle_tumors(tumors)
+
+    # If there are no CT tumor delineations keep the MRI registered tumor.
+    elif len(tumors_reg) > 0 and len(tumors) == 0:
+        handle_tumors(tumors_reg)
 
 
 # Extract global registration.
@@ -215,8 +219,9 @@ def extract_from_dicom(study_input, patient_output):
     for series in dicom_series:
         series_path = os.path.join(study_input, series)
         series_files = get_files(series_path)
-        volume_path = os.path.join(patient_output, f"{modality}_volume.nii.gz")
-        print(f"\t\t-Extract volume: {series} ---> {volume_path}")
+        volume_name = f"{modality}_volume.nii.gz"
+        volume_path = os.path.join(patient_output, volume_name)
+        print(f"\t\t-Extract volume: {series} ---> {volume_name}")
         run(["clitkDicom2Image", *series_files, "-o", volume_path, "-t", "10"])
 
     # Extract the masks from the RT structures in nifty format. Use the extracted volume from above.
@@ -360,13 +365,13 @@ def main():
 
     # For each patient of the dataset.
     for i, patient in enumerate(os.listdir(input_dir)):
-        print(f"\n-{i} Extracting patient: {patient}")
+        print(f"\n-{i + 1} Extracting patient: {patient}")
         patient_input = os.path.join(input_dir, patient)
         patient_output = create_dir(output_dir, patient)
 
         # For each study of the patient (ceMRI, SPECT-CT).
         for study in os.listdir(patient_input):
-            if study == "PET-CT" or study == "ceMRI-DEF":
+            if study == "PET-CT":
                 continue
 
             print(f"\t-Study: {study}")
