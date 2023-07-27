@@ -2,7 +2,10 @@ import argparse
 import json
 import os
 import sys
-from enum import Enum
+
+import nibabel as nib
+import numpy as np
+from scipy.spatial.distance import cdist
 
 from shutil import rmtree
 
@@ -56,6 +59,39 @@ def rename_instance(working_dir, old_name, new_name):
     os.rename(old_path, new_path)
 
     return new_path
+
+
+# Calculate Dice, Mean Absolute Distance etc. Use comments to include/exclude metrics.
+def calculate_metrics(fixed, moving):
+    fixed = nib.load(fixed)
+    moving = nib.load(moving)
+
+    # Calculate Dice Similarity Coefficient
+    fixed_data = np.array(fixed.get_fdata()).astype(int)
+    moving_data = np.array(moving.get_fdata()).astype(int)
+    ground_truth_sum = np.sum(fixed_data)
+    moving_sum = np.sum(moving_data)
+    intersection = fixed_data & moving_data
+    intersection_sum = np.count_nonzero(intersection)
+    dice_index = 2 * intersection_sum / (ground_truth_sum + moving_sum)
+
+    # Calculate the directed Hausdorff distance between the images
+    subsample = 10000
+    fixed_points = np.array(np.where(fixed_data)).T
+    fixed_points = fixed_points[np.random.choice(fixed_points.shape[0], subsample, replace=False)]
+    moving_points = np.array(np.where(moving_data)).T
+    moving_points = moving_points[np.random.choice(moving_points.shape[0], subsample, replace=False)]
+    distances = cdist(fixed_points, moving_points)
+    min_distances_fixed = distances.min(axis=1, initial=np.inf)
+    min_distances_moving = distances.min(axis=0, initial=np.inf)
+    max_distance = max(min_distances_fixed.max(), min_distances_moving.max())
+    avg_distance = (min_distances_fixed.mean() + min_distances_moving.mean()) / 2.0
+
+    return {
+        "Dice": dice_index,
+        "H.D Max": max_distance,
+        "H.D Avg": avg_distance
+    }
 
 
 # Console colors.

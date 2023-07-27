@@ -1,15 +1,14 @@
 # Import necessary files and libraries.
 import json
 import os
-from shutil import copy
-from subprocess import run, check_output
+from subprocess import run
 
 import numpy as np
 from scipy.ndimage import label
 import SimpleITK as sitk
 
 from preprocessing import cast_to_type
-from registration import calculate_metrics
+from utils import calculate_metrics
 from utils import setup_parser, create_dir
 
 

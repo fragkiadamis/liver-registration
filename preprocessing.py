@@ -105,7 +105,7 @@ def resample(pair, spacing=None, size=None):
         image_data = np.array(image.get_fdata())
         img_min = np.min(image_data)
 
-        interp = 2 if "volume" in img else 0
+        interp = 1 if "volume" in img else 0
         arg_list = [
             "clitkAffineTransform", "-i", img, "-o", img,
             f"--interp={interp}", "-l", base_img, f"--pad={img_min}"
@@ -114,7 +114,7 @@ def resample(pair, spacing=None, size=None):
 
 
 # For each mask, create a bounding box that surrounds the mask.
-def create_bounding_boxes(pair):
+def create_bounding_boxes(pair, do_liver, do_tumor):
     # Convert to nifty and save the image.
     for study in pair:
         items = {"liver": pair[study]["liver"]}
@@ -128,7 +128,7 @@ def create_bounding_boxes(pair):
             })
 
         for item in items:
-            if item == "tumor":
+            if item == "tumor" and do_tumor:
                 image = sitk.ReadImage(pair[study]["tumor"])
                 image_arr = sitk.GetArrayFromImage(image)
 
@@ -151,7 +151,7 @@ def create_bounding_boxes(pair):
                 output_img.SetOrigin(image.GetOrigin())
                 split_path = items[item].split(".")
                 sitk.WriteImage(output_img, f"{split_path[0]}_bbox.nii.gz")
-            else:
+            elif item == "liver" and do_liver:
                 # Load the mask and convert it into a numpy array.
                 mask_nii = nib.load(items[item])
                 mask_data = np.array(mask_nii.get_fdata())
@@ -254,7 +254,7 @@ def elastix_preprocessing(input_dir, output_dir):
         print(f"\t-Resampling for patient: {patient}")
         resample(pair, spacing=(1, 1, 1), size=(512, 512, 448))
         print(f"\t-Create bounding boxes for patient: {patient}")
-        create_bounding_boxes(pair)
+        create_bounding_boxes(pair, do_liver=True, do_tumor=True)
 
 
 # The preprocessing pipeline for ct scan deep learning segmentation.
@@ -348,12 +348,14 @@ def dl_reg_preprocessing(input_dir, output_dir, aligned_mri_dir=0):
             })
 
         # Process the images.
-        # print("\t-Resample images and labels...")
-        # resample(pair, spacing=(2, 2, 2), size=(256, 256, 224))
+        print("\t-Resample images and labels...")
+        resample(pair, spacing=(2, 2, 2), size=(256, 256, 224))
         print("\t-Cast images to float...")
         cast_to_type([pair["CT"]["volume"], pair["MRI"]["volume"]], "float")
         print("\t-Image normalization...")
         gaussian_normalize([pair["CT"]["volume"], pair["MRI"]["volume"]])
+        print(f"\t-Create tumor bounding boxes...")
+        create_bounding_boxes(pair, do_liver=False, do_tumor=True)
 
 
 def main():

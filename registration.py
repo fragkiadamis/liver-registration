@@ -3,11 +3,7 @@ import json
 import os
 from subprocess import check_output, CalledProcessError
 
-import nibabel as nib
-import numpy as np
-from scipy.spatial.distance import directed_hausdorff
-
-from utils import setup_parser, validate_paths, ConsoleColors, create_dir, rename_instance, delete_dir
+from utils import setup_parser, validate_paths, ConsoleColors, create_dir, rename_instance, calculate_metrics
 
 
 # Open file and edit the bspline interpolation order.
@@ -77,46 +73,6 @@ def elastix_cli(images, masks, parameters, output, filename, t0=None):
         # Catch possible error
         print(f"\t\t{ConsoleColors.FAIL}Failed!{ConsoleColors.END}")
         return -1
-
-
-# Calculate Dice, Mean Absolute Distance etc. Use comments to include/exclude metrics.
-def calculate_metrics(ground_truth, moving):
-    ground_truth = nib.load(ground_truth)
-    moving = nib.load(moving)
-
-    # For overlap metrics
-    ground_truth_data = np.array(ground_truth.get_fdata()).astype(int)
-    moving_data = np.array(moving.get_fdata()).astype(int)
-    ground_truth_sum = np.sum(ground_truth_data)
-    moving_sum = np.sum(moving_data)
-    intersection = ground_truth_data & moving_data
-    # union = ground_truth_data | moving_data
-    intersection_sum = np.count_nonzero(intersection)
-    # union_sum = np.count_nonzero(union)
-
-    # For distance metrics
-    ground_truth_coords = np.array(np.where(ground_truth_data == 1)).T
-    moving_coords = np.array(np.where(moving_data == 1)).T
-
-    # Create the distance matrix with samples because the "on" values on both images are so many that the program
-    # overflows the memory while trying to create the distance matrix.
-    # n_samples = 10000
-    # ground_truth_sample = np.random.choice(ground_truth_coords.shape[0], n_samples, replace=True)
-    # moving_sample = np.random.choice(moving_coords.shape[0], n_samples, replace=True)
-
-    # Calculate the distance matrix between the sampled "on" voxels in each image
-    # dist_matrix = cdist(ground_truth_coords[ground_truth_sample], moving_coords[moving_sample])
-
-    # Calculate the directed Hausdorff distance between the images
-    distance_gt_2_moving = directed_hausdorff(ground_truth_coords, moving_coords)[0]
-    distance_moving_2_gt = directed_hausdorff(moving_coords, ground_truth_coords)[0]
-
-    return {
-        "Dice": 2 * intersection_sum / (ground_truth_sum + moving_sum),
-        # "Jaccard": intersection_sum / union_sum,
-        # "M.A.D": np.mean(np.abs(dist_matrix)),
-        "H.D": max(distance_gt_2_moving, distance_moving_2_gt)
-    }
 
 
 def main():
