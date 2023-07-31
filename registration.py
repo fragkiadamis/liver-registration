@@ -43,6 +43,8 @@ def apply_transform(transform_file, images, transformation_dir, def_field):
         check_output(["transformix", *trx_args])
         filename = img_path.split("/")[-1].split(".")[0]
         rename_instance(transformation_dir, "result.nii.gz", f"{filename}_reg.nii.gz")
+        if def_field:
+            rename_instance(transformation_dir, "deformationField.nii.gz", f"{filename}_df.nii.gz")
 
     # Reset bspline interpolation order to 3. If it's not changed, nothing is going to happen.
     change_transform_file(transform_file, "FinalBSplineInterpolationOrder", {"old": "0", "new": "3"})
@@ -67,7 +69,6 @@ def elastix_cli(images, masks, parameters, output, filename, t0=None):
     try:
         # Perform registration, rename the resulted image and return the transformation.
         check_output(["elastix", *elx_args])
-        rename_instance(output, "result.0.nii.gz", f"{filename}.nii.gz")
         return os.path.join(output, "TransformParameters.0.txt")
     except CalledProcessError as e:
         # Catch possible error

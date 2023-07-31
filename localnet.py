@@ -85,7 +85,7 @@ def transforms():
                     "moving_image",
                     "moving_liver",
                     "moving_tumor",
-                    "moving_tumor_bbox",
+                    "moving_tumor_bbox"
                 ],
                 ensure_channel_first=True
             ),
@@ -263,7 +263,7 @@ def main():
     model_dir = create_dir(output_dir, model_name)
 
     # Initialize wandb.
-    # init_wandb(fold)
+    init_wandb(fold)
 
     # Load dataset file paths.
     data = [
@@ -311,82 +311,82 @@ def main():
         print(item["patient"])
 
     # Cache the transforms of the datasets.
-    # train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
-    # val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
-    # 
-    # # Load the datasets.
-    # train_loader = DataLoader(train_ds, batch_size=TR_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
-    # val_loader = DataLoader(val_ds, batch_size=VAL_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
-    # 
-    # # Create LocalNet, losses and optimizer.
-    # model = LocalNet(
-    #     spatial_dims=3,
-    #     in_channels=2,
-    #     out_channels=3,
-    #     num_channel_initial=16,
-    #     extract_levels=(2,),
-    #     out_activation=None,
-    #     out_kernel_initializer="zeros",
-    # ).to(DEVICE)
-    # 
-    # train_steps = len(train_ds) // TR_BATCH_SIZE
-    # val_steps = len(val_ds) // VAL_BATCH_SIZE
-    # 
-    # warp_layer = {
-    #     "linear": Warp(mode="bilinear", padding_mode="border").to(DEVICE),
-    #     "binary": Warp(mode="nearest", padding_mode="border").to(DEVICE)
-    # }
-    # criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
-    # regularization = BendingEnergyLoss()
-    # optimizer = Adam(model.parameters(), lr=INIT_LR)
-    # dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
-    # 
-    # best_liver_dice = 0
-    # start_time = time()
-    # for e in tqdm(range(NUM_EPOCHS)):
-    #     epoch_start_time = time()
-    # 
-    #     # Train and validate the model.
-    #     print("\n***TRAINING***")
-    #     train_loss, train_dice_avg = train(model, train_loader, criterion,
-    #                                        regularization, optimizer, warp_layer, dice_metric)
-    #     print(f"[INFO] Training time: {round((time() - epoch_start_time) / 60, 2)} minutes")
-    # 
-    #     print("***VALIDATION***")
-    #     val_start_time = time()
-    #     val_loss, val_dice_avg = validate(model, val_loader, criterion, regularization, warp_layer, dice_metric)
-    #     print(f"[INFO] Validation time: {round((time() - val_start_time) / 60, 2)} minutes")
-    # 
-    #     avg_train_loss = train_loss / train_steps
-    #     avg_val_loss = val_loss / val_steps
-    # 
-    #     # Print the model training and validation information.
-    #     print("***EPOCH***")
-    #     print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
-    #     print(f"[INFO] Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
-    #     wandb.log({
-    #         "train_loss": avg_train_loss, "val_loss": avg_val_loss,
-    #         "val_liver_dice": val_dice_avg, "train_liver_dice": train_dice_avg,
-    #     }, step=e + 1)
-    # 
-    #     # Follow the epoch with the best dice and save the respective weights.
-    #     if val_dice_avg > best_liver_dice:
-    #         best_liver_dice = val_dice_avg
-    #         torch.save(model.state_dict(), f"{model_dir}/fold_{fold}_best_model.pth")
-    #         print(f"[INFO] saved model in epoch {e + 1} as new best model.")
-    # 
-    #     wandb.log({"best_liver_dice": best_liver_dice}, step=e + 1)
-    #     print(f"[INFO] Epoch time: {round((time() - epoch_start_time) / 60, 2)} minutes")
-    # 
-    # print(f"\n[INFO] total time taken to train the model: {round(((time() - start_time) / 60) / 60, 2)} hours")
-    # wandb.finish()
-    # 
-    # # Load saved model.
-    # model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth"))
-    # 
-    # # Inference the data and save the predictions.
-    # fold_data_output = create_dir(model_dir, f"fold_{fold}_raw")
-    # inference_model(model, val_loader, warp_layer, input_dir, fold_data_output)
+    train_ds = CacheDataset(data=train_files, transform=transforms(), cache_rate=1.0, num_workers=0)
+    val_ds = CacheDataset(data=val_files, transform=transforms(), cache_rate=1.0, num_workers=0)
+
+    # Load the datasets.
+    train_loader = DataLoader(train_ds, batch_size=TR_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_ds, batch_size=VAL_BATCH_SIZE, pin_memory=PIN_MEMORY, shuffle=False, num_workers=0)
+
+    # Create LocalNet, losses and optimizer.
+    model = LocalNet(
+        spatial_dims=3,
+        in_channels=2,
+        out_channels=3,
+        num_channel_initial=16,
+        extract_levels=(2,),
+        out_activation=None,
+        out_kernel_initializer="zeros",
+    ).to(DEVICE)
+
+    train_steps = len(train_ds) // TR_BATCH_SIZE
+    val_steps = len(val_ds) // VAL_BATCH_SIZE
+
+    warp_layer = {
+        "linear": Warp(mode="bilinear", padding_mode="border").to(DEVICE),
+        "binary": Warp(mode="nearest", padding_mode="border").to(DEVICE)
+    }
+    criterion = MultiScaleLoss(DiceLoss(), scales=[0, 1, 2, 4, 8, 16, 32])
+    regularization = BendingEnergyLoss()
+    optimizer = Adam(model.parameters(), lr=INIT_LR)
+    dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
+
+    best_liver_dice = 0
+    start_time = time()
+    for e in tqdm(range(NUM_EPOCHS)):
+        epoch_start_time = time()
+
+        # Train and validate the model.
+        print("\n***TRAINING***")
+        train_loss, train_dice_avg = train(model, train_loader, criterion,
+                                           regularization, optimizer, warp_layer, dice_metric)
+        print(f"[INFO] Training time: {round((time() - epoch_start_time) / 60, 2)} minutes")
+
+        print("***VALIDATION***")
+        val_start_time = time()
+        val_loss, val_dice_avg = validate(model, val_loader, criterion, regularization, warp_layer, dice_metric)
+        print(f"[INFO] Validation time: {round((time() - val_start_time) / 60, 2)} minutes")
+
+        avg_train_loss = train_loss / train_steps
+        avg_val_loss = val_loss / val_steps
+
+        # Print the model training and validation information.
+        print("***EPOCH***")
+        print(f"[INFO] EPOCH: {e + 1}/{NUM_EPOCHS}")
+        print(f"[INFO] Train loss: {avg_train_loss}, Val loss: {avg_val_loss}, Dice Index: {val_dice_avg}")
+        wandb.log({
+            "train_loss": avg_train_loss, "val_loss": avg_val_loss,
+            "val_liver_dice": val_dice_avg, "train_liver_dice": train_dice_avg,
+        }, step=e + 1)
+
+        # Follow the epoch with the best dice and save the respective weights.
+        if val_dice_avg > best_liver_dice:
+            best_liver_dice = val_dice_avg
+            torch.save(model.state_dict(), f"{model_dir}/fold_{fold}_best_model.pth")
+            print(f"[INFO] saved model in epoch {e + 1} as new best model.")
+
+        wandb.log({"best_liver_dice": best_liver_dice}, step=e + 1)
+        print(f"[INFO] Epoch time: {round((time() - epoch_start_time) / 60, 2)} minutes")
+
+    print(f"\n[INFO] total time taken to train the model: {round(((time() - start_time) / 60) / 60, 2)} hours")
+    wandb.finish()
+
+    # Load saved model.
+    model.load_state_dict(torch.load(f"{model_dir}/fold_{fold}_best_model.pth", map_location=torch.device(DEVICE)))
+
+    # Inference the data and save the predictions.
+    fold_data_output = create_dir(model_dir, f"fold_{fold}_raw")
+    inference_model(model, val_loader, warp_layer, input_dir, fold_data_output)
 
 
 # Use this file as a script and run it.

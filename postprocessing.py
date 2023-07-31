@@ -85,78 +85,109 @@ def postprocess_segmentations(input_dir, output_dir, ref_dir):
 
     folds = os.listdir(input_dir)
     for fold in folds:
-        if fold == "evaluation.json":
-            continue
+        fold_path = os.path.join(input_dir, fold)
+        if os.path.isdir(fold_path) and "validation" in fold_path:
+            data_path = os.path.join(input_dir, fold, "validation_raw")
+            masks = os.listdir(data_path)
+            for mask in masks:
+                mask_path = os.path.join(data_path, mask)
+                cast_to_type([mask_path], "uchar")
 
-        data_path = os.path.join(input_dir, fold, "validation_raw")
-        masks = os.listdir(data_path)
-        for mask in masks:
-            mask_path = os.path.join(data_path, mask)
-            cast_to_type([mask_path], "uchar")
+                img_in = sitk.ReadImage(mask_path)
+                img_npy = sitk.GetArrayFromImage(img_in)
+                volume_per_voxel = float(np.prod(img_in.GetSpacing(), dtype=np.float64))
 
-            img_in = sitk.ReadImage(mask_path)
-            img_npy = sitk.GetArrayFromImage(img_in)
-            volume_per_voxel = float(np.prod(img_in.GetSpacing(), dtype=np.float64))
+                image, largest_removed, kept_size = remove_redundant_areas(img_npy, [1], volume_per_voxel)
 
-            image, largest_removed, kept_size = remove_redundant_areas(img_npy, [1], volume_per_voxel)
+                img_out_itk = sitk.GetImageFromArray(image)
+                img_out_itk = copy_geometry(img_out_itk, img_in)
 
-            img_out_itk = sitk.GetImageFromArray(image)
-            img_out_itk = copy_geometry(img_out_itk, img_in)
+                patient = mask.split(".")[0]
+                img_path = os.path.join(output_dir, f"{patient}.nii.gz")
+                sitk.WriteImage(img_out_itk, img_path)
 
-            patient = mask.split(".")[0]
-            img_path = os.path.join(output_dir, f"{patient}.nii.gz")
-            sitk.WriteImage(img_out_itk, img_path)
+                like_img = os.path.join(ref_dir, patient, "spect_ct_volume.nii.gz")
+                run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img, "--interp=0"])
 
-            like_img = os.path.join(ref_dir, patient, "spect_ct_volume.nii.gz")
-            run(["clitkAffineTransform", "-i", img_path, "-o", img_path, "-l", like_img, "--interp=0"])
-
-            ct_gt_label = os.path.join(ref_dir, patient, "spect_ct_liver.nii.gz")
-            results.update({
-                patient: {
-                    "liver": {
-                        "U-NET3D": calculate_metrics(ct_gt_label, img_path)
+                ct_gt_label = os.path.join(ref_dir, patient, "spect_ct_liver.nii.gz")
+                results.update({
+                    patient: {
+                        "liver": {
+                            "U-NET3D": calculate_metrics(ct_gt_label, img_path)
+                        }
                     }
-                }
-            })
-            print(patient, results[patient])
+                })
+                print(patient, results[patient])
 
-    with open(f"{output_dir}/../unet3d_evaluation.json", "w") as fp:
-        json.dump(results, fp)
+        with open(f"{output_dir}/../unet3d_evaluation.json", "w") as fp:
+            json.dump(results, fp)
 
 
 # Resample images to 512x512x448 after deep learning registration.
-def postprocess_registrations(input_dir, output_dir):
-    for patient in os.listdir(input_dir):
-        print(f"Resampling patient: {patient}")
-        patient_dir = os.path.join(input_dir, patient)
-        mri_volume_pred = os.path.join(patient_dir, "mri_volume_pred.nii.gz")
-        mri_label_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
+def postprocess_registrations(input_dir, output_dir, ref_dir):
+    localnet_items = os.listdir(input_dir)
+    output_dir = create_dir(input_dir, output_dir)
 
-        patient_output_dir = os.path.join(output_dir, patient)
-        mri_volume_out = os.path.join(patient_output_dir, "mri_volume_pred.nii.gz")
-        mri_label_out = os.path.join(patient_output_dir, "mri_liver_pred.nii.gz")
+    for item in localnet_items:
+        item_path = os.path.join(input_dir, item)
 
-        ct_ref_path = os.path.join(patient_output_dir, "spect_ct_volume.nii.gz")
-        ct_gt_label = os.path.join(patient_output_dir, "spect_ct_liver.nii.gz")
+        if os.path.isdir(item_path) and "fold" in item_path:
+            for patient in os.listdir(item_path):
+                if patient == "JaneDoe_ANON12304":
+                    continue
 
-        arg_list = [
-            "clitkAffineTransform", "-i", mri_volume_pred, "-o", mri_volume_out, "--interp=2", "-l", ct_ref_path
-        ]
-        run(arg_list)
-        arg_list = [
-            "clitkAffineTransform", "-i", mri_label_pred, "-o", mri_label_out, "--interp=0", "-l", ct_ref_path
-        ]
-        run(arg_list)
+                print(f"-Patient: {patient}")
+                patient_dir = os.path.join(item_path, patient)
+                patient_output_dir = create_dir(output_dir, patient)
 
-        results = {
-            "liver": {
-                "LocalNet": calculate_metrics(ct_gt_label, mri_label_out)
-            }
-        }
-        print(results)
+                mri_volume_pred = os.path.join(patient_dir, "mri_volume_pred.nii.gz")
+                mri_liver_pred = os.path.join(patient_dir, "mri_liver_pred.nii.gz")
+                mri_tumor_pred = os.path.join(patient_dir, "mri_tumor_pred.nii.gz")
+                mri_tumor_bbox_pred = os.path.join(patient_dir, "mri_tumor_bbox_pred.nii.gz")
+                mri_ddf_pred = os.path.join(patient_dir, "mri_ddf_pred.nii.gz")
 
-        with open(f"{patient_output_dir}/localnet_evaluation.json", "w") as fp:
-            json.dump(results, fp)
+                mri_volume_out = os.path.join(patient_output_dir, "mri_volume_pred.nii.gz")
+                mri_liver_out = os.path.join(patient_output_dir, "mri_liver_pred.nii.gz")
+                mri_tumor_out = os.path.join(patient_output_dir, "mri_tumor_pred.nii.gz")
+                mri_tumor_bbox_out = os.path.join(patient_output_dir, "mri_tumor_bbox_pred.nii.gz")
+                mri_ddf_out = os.path.join(patient_output_dir, "mri_ddf_pred.nii.gz")
+
+                ct_volume = os.path.join(ref_dir, patient, "spect_ct_volume.nii.gz")
+                ct_liver = os.path.join(ref_dir, patient, "spect_ct_liver.nii.gz")
+                ct_tumor = os.path.join(ref_dir, patient, "spect_ct_tumor.nii.gz")
+                ct_tumor_bbox = os.path.join(ref_dir, patient, "spect_ct_tumor_bbox.nii.gz")
+
+                print("\t-Resampling...")
+                arg_list = [
+                    "clitkAffineTransform", "-i", mri_volume_pred, "-o", mri_volume_out, "--interp=1", "-l", ct_volume
+                ]
+                run(arg_list)
+                arg_list = [
+                    "clitkAffineTransform", "-i", mri_liver_pred, "-o", mri_liver_out, "--interp=0", "-l", ct_volume
+                ]
+                run(arg_list)
+                arg_list = [
+                    "clitkAffineTransform", "-i", mri_tumor_pred, "-o", mri_tumor_out, "--interp=0", "-l", ct_volume
+                ]
+                run(arg_list)
+                arg_list = [
+                    "clitkAffineTransform", "-i", mri_tumor_bbox_pred, "-o", mri_tumor_bbox_out, "--interp=0", "-l", ct_volume
+                ]
+                run(arg_list)
+                arg_list = [
+                    "clitkAffineTransform", "-i", mri_ddf_pred, "-o", mri_ddf_out, "--interp=1", "-l", ct_volume
+                ]
+                run(arg_list)
+
+                print("\t-Calculating results...")
+                results = {
+                    "liver": calculate_metrics(ct_liver, mri_liver_out),
+                    "tumor": calculate_metrics(ct_tumor, mri_tumor_out),
+                    "tumor_bbox": calculate_metrics(ct_tumor_bbox, mri_tumor_bbox_out)
+                }
+
+                with open(f"{patient_output_dir}/localnet_evaluation.json", "w") as fp:
+                    json.dump(results, fp)
 
 
 def main():
@@ -170,7 +201,7 @@ def main():
     if postprocessing_type == "seg":
         postprocess_segmentations(input_dir, output_dir, ref_dir)
     elif postprocessing_type == "reg":
-        postprocess_registrations(input_dir, output_dir)
+        postprocess_registrations(input_dir, output_dir, ref_dir)
 
 
 # Use this file as a script and run it.

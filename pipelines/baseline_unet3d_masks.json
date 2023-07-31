@@ -6,18 +6,18 @@
       "name": "01_Affine_KS",
       "images": {"fixed": "spect_ct_unet3d_liver.nii.gz", "moving": "mri_liver.nii.gz"},
       "parameters": "parameters/Affine_KS.txt",
-      "def_field": 0,
+      "def_field": 1,
       "result": "mri_liver_reg",
-      "apply_on": ["mri_volume.nii.gz", "mri_tumor.nii.gz", "mri_tumor_bbox.nii.gz"]
+      "apply_on": ["mri_volume.nii.gz", "mri_liver.nii.gz", "mri_tumor.nii.gz", "mri_tumor_bbox.nii.gz"]
     },
     {
       "name": "02_B-Spline_MI",
       "images": {"fixed": "spect_ct_volume.nii.gz", "moving": "mri_volume.nii.gz"},
       "masks": {"fixed": "spect_ct_unet3d_liver_bbox.nii.gz", "moving": "mri_liver_bbox.nii.gz"},
       "parameters": "parameters/B-spline_MI.txt",
-      "def_field": 0,
+      "def_field": 1,
       "result": "mri_volume_reg",
-      "apply_on": ["mri_liver.nii.gz", "mri_tumor.nii.gz", "mri_tumor_bbox.nii.gz"]
+      "apply_on": ["mri_volume.nii.gz", "mri_liver.nii.gz", "mri_tumor.nii.gz", "mri_tumor_bbox.nii.gz"]
     }
   ],
   "evaluate": ["liver", "tumor", "tumor_bbox"]

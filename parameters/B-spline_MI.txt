@@ -62,7 +62,7 @@
 
 (WriteTransformParametersEachIteration "false")
 (WriteTransformParametersEachResolution "false")
-(WriteResultImage "true")
+(WriteResultImage "false")
 (ResultImagePixelType "float")
 (ResultImageFormat "nii.gz")
 (ShowExactMetricValue "false")
