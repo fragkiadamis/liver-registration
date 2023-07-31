@@ -308,15 +308,19 @@ def compare_volumes(path_a, path_b):
     volume_a, volume_b = np.array(volume_a, dtype=np.int32), np.array(volume_b, dtype=np.int32)
     shape_a, shape_b = np.shape(volume_a), np.shape(volume_b)
 
+    # 2 = very few or none similarities.
     result = 2
     if shape_a == shape_b:
         volume_sub = volume_a - volume_b
         summation = np.sum(np.absolute(volume_sub))
 
+        # -1 = Duplicate.
         if summation == 0:
             result = -1
+        # 0 = might be the same.
         elif summation < 10000:
             result = 0
+        # 1 = look alike.
         elif summation < 100000:
             result = 1
 
@@ -326,31 +330,21 @@ def compare_volumes(path_a, path_b):
 # Check for duplicate patients in the dataset. Exact duplicates will be removed automatically, very similar ones are
 # going to be stored in the duplicates directory and will be handled manually by the user. handled manually by the user.
 def check_for_duplicates(input_dir, patients):
-    for patient_a in patients:
-        print(f"-Checking for duplicates for {patient_a}")
-        patient_a_path = os.path.join(input_dir, patient_a)
-        for study in os.listdir(patient_a_path):
-            print(f"\t-Checking study {study}")
-            volume_a_path = os.path.join(patient_a_path, str(study), "volume.nii.gz")
+    duplicates = set()
 
-            # Remove self and check on the rest of the patients.
-            list_without_self = patients.copy()
-            list_without_self.remove(patient_a)
-            for patient_b in list_without_self:
-                print(f"\t\t-Against patient {patient_b}")
-                patient_b_path = os.path.join(input_dir, patient_b)
-                volume_b_path = os.path.join(patient_b_path, str(study), "volume.nii.gz")
+    for i in range(len(patients)):
+        patient_current = os.path.join(input_dir, patients[i])
+        mri_label_current = os.path.join(patient_current, "mri_liver.nii.gz")
+        for j in range(i + 1, len(patients)):
+            patient_next = os.path.join(input_dir, patients[j])
+            mri_label_next = os.path.join(patient_next, "mri_liver.nii.gz")
+            result = compare_volumes(mri_label_current, mri_label_next)
 
-                print(f"\t\t\t-Comparing {volume_a_path} with {volume_b_path}")
-                result = compare_volumes(volume_a_path, volume_b_path)
-                if result == -1:
-                    print("\t\t\t-These images are exactly the same")
-                elif result == 0:
-                    print("\t\t\t-These images might be the same patient")
-                elif result == 1:
-                    print("\t\t\t-These images look alike")
-                elif result == 2:
-                    print("\t\t\t-These images seem OK!")
+            print(patients[i], patients[j], result)
+            if result == -1:
+                duplicates.add((patient_current, patient_next))
+
+    print(duplicates)
 
 
 def main():
@@ -379,7 +373,7 @@ def main():
             extract_from_dicom(study_input, patient_output)
 
     # # Make a check to handle any possible duplicate data.
-    # check_for_duplicates(output_dir, os.listdir(output_dir))
+    check_for_duplicates(output_dir, os.listdir(output_dir))
 
 
 # Use this file as a script and run it.
